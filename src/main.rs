@@ -1,5 +1,9 @@
 use chip8_emulator::{Emulator, Keyboard};
 use std::{process::exit, env, fs};
+// use winit::{
+//     event_loop::EventLoop,
+//     window::{Window, WindowBuilder},
+// };
 
 fn load_rom(filename: &str, e: &mut Emulator) {
     let contents = fs::read(filename)
@@ -27,7 +31,9 @@ fn main() {
     println!("{:?}", e);
 
 
-    // TODO write emulate loop
+    // // TODO write emulate loop
+    // let event_loop = EventLoop::new();
+    // let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     // e.emulate(0x00E0, &k);
     e.emulate(0x1723, &k);

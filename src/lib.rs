@@ -1,13 +1,53 @@
+
 use std::fmt;
 use rand::Rng;
 
+// use instruction::Instruction;
 
+// pub mod instruction;
+// pub mod emulator;
+
+
+#[derive(Copy, Clone, Debug)]
+enum Key {
+    Up,
+    Down
+}
+
+pub struct Keyboard {
+    keys: [Key; 16]
+}
+
+impl Keyboard {
+    pub fn new() -> Keyboard {
+        Keyboard {
+            keys: [Key::Up; 16]
+        }
+    }
+
+    pub fn is_key_down(&self, index: u8) -> bool {
+        match self.keys[index as usize] {
+            Key::Up => false,
+            Key::Down => true,
+        }
+    }
+
+    pub fn get_first_key_down(&self) -> Option<u8> {
+        for (i, key) in self.keys.iter().enumerate() {
+            match key {
+                Key::Down => return Some(i as u8),
+                _ => ()
+            }
+        }
+        None
+    }
+ }
 
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq)]
 
-enum Instruction {
+pub enum Instruction {
     SYS_addr,
     CLS,
     RET,
@@ -59,7 +99,7 @@ enum Instruction {
 
 // #[allow(non_camel_case_types)] 
 impl Instruction {
-    fn parse_opcode(opcode: u16) -> Instruction {
+    pub fn parse_opcode(opcode: u16) -> Instruction {
         let high_byte: u8 = ((opcode >> 8) & 0xFF) as u8;
         let low_byte: u8 = (opcode & 0xFF) as u8;
         let first_nibble = high_byte & 0xF0; // always instruction indicator
@@ -118,40 +158,6 @@ impl Instruction {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-enum Key {
-    Up,
-    Down
-}
-
-pub struct Keyboard {
-    keys: [Key; 16]
-}
-
-impl Keyboard {
-    pub fn new() -> Keyboard {
-        Keyboard {
-            keys: [Key::Up; 16]
-        }
-    }
-
-    pub fn is_key_down(&self, index: u8) -> bool {
-        match self.keys[index as usize] {
-            Key::Up => false,
-            Key::Down => true,
-        }
-    }
-
-    pub fn get_first_key_down(&self) -> Option<u8> {
-        for (i, key) in self.keys.iter().enumerate() {
-            match key {
-                Key::Down => return Some(i as u8),
-                _ => ()
-            }
-        }
-        None
-    }
- }
 
  pub struct Display {
      display: [[bool; 64]; 48]
@@ -169,13 +175,13 @@ pub struct Emulator {
     program_memory_index: usize,
     display_refresh_memory_index: usize,
     eti_660_memory_index: usize,
+    sprite_memory_index: usize,
     stack: [u16; 16],
 }
 
 impl Emulator {
     pub fn new() -> Emulator {
-        // TODO need to add spirtes of 0-F in start of memory
-        Emulator {
+        let mut e = Emulator {
             registers: [0; 16],
             flag_register_index: 0xF,
             pc: 0x200,
@@ -187,8 +193,111 @@ impl Emulator {
             program_memory_index: 0x200,
             display_refresh_memory_index: 0xF00,
             eti_660_memory_index: 0x600,
+            sprite_memory_index: 0x000,
             stack: [0; 16],
-        }
+        };
+        e.set_character_sprites();
+        e
+    }
+
+    fn set_character_sprites(&mut self) {
+        // sets up the character 0-F in the interpreters memory
+        // 0
+        self.memory[self.sprite_memory_index + 0] = 0xF0;
+        self.memory[self.sprite_memory_index + 1] = 0x90;
+        self.memory[self.sprite_memory_index + 2] = 0x90;
+        self.memory[self.sprite_memory_index + 3] = 0x90;
+        self.memory[self.sprite_memory_index + 4] = 0xF0;
+        // 1
+        self.memory[self.sprite_memory_index + 5] = 0x20;
+        self.memory[self.sprite_memory_index + 6] = 0x60;
+        self.memory[self.sprite_memory_index + 7] = 0x20;
+        self.memory[self.sprite_memory_index + 8] = 0x20;
+        self.memory[self.sprite_memory_index + 9] = 0x70;
+        // 2
+        self.memory[self.sprite_memory_index + 10] = 0xF0;
+        self.memory[self.sprite_memory_index + 11] = 0x10;
+        self.memory[self.sprite_memory_index + 12] = 0xF0;
+        self.memory[self.sprite_memory_index + 13] = 0x80;
+        self.memory[self.sprite_memory_index + 14] = 0xF0;
+        // 3
+        self.memory[self.sprite_memory_index + 15] = 0xF0;
+        self.memory[self.sprite_memory_index + 16] = 0x10;
+        self.memory[self.sprite_memory_index + 17] = 0xF0;
+        self.memory[self.sprite_memory_index + 18] = 0x10;
+        self.memory[self.sprite_memory_index + 19] = 0xF0;
+        // 4
+        self.memory[self.sprite_memory_index + 20] = 0x90;
+        self.memory[self.sprite_memory_index + 21] = 0x90;
+        self.memory[self.sprite_memory_index + 22] = 0xF0;
+        self.memory[self.sprite_memory_index + 23] = 0x10;
+        self.memory[self.sprite_memory_index + 24] = 0x10;
+        // 5
+        self.memory[self.sprite_memory_index + 25] = 0xF0;
+        self.memory[self.sprite_memory_index + 26] = 0x80;
+        self.memory[self.sprite_memory_index + 27] = 0xF0;
+        self.memory[self.sprite_memory_index + 28] = 0x10;
+        self.memory[self.sprite_memory_index + 29] = 0xF0;
+        // 6
+        self.memory[self.sprite_memory_index + 30] = 0xF0;
+        self.memory[self.sprite_memory_index + 31] = 0x80;
+        self.memory[self.sprite_memory_index + 32] = 0xF0;
+        self.memory[self.sprite_memory_index + 33] = 0x90;
+        self.memory[self.sprite_memory_index + 34] = 0xF0;
+        // 7 
+        self.memory[self.sprite_memory_index + 35] = 0xF0;
+        self.memory[self.sprite_memory_index + 36] = 0x10;
+        self.memory[self.sprite_memory_index + 37] = 0x20;
+        self.memory[self.sprite_memory_index + 38] = 0x40;
+        self.memory[self.sprite_memory_index + 39] = 0x40;
+        // 8
+        self.memory[self.sprite_memory_index + 40] = 0xF0;
+        self.memory[self.sprite_memory_index + 41] = 0x90;
+        self.memory[self.sprite_memory_index + 42] = 0xF0;
+        self.memory[self.sprite_memory_index + 43] = 0x90;
+        self.memory[self.sprite_memory_index + 44] = 0xF0;
+        // 9
+        self.memory[self.sprite_memory_index + 45] = 0xF0;
+        self.memory[self.sprite_memory_index + 46] = 0x90;
+        self.memory[self.sprite_memory_index + 47] = 0xF0;
+        self.memory[self.sprite_memory_index + 48] = 0x10;
+        self.memory[self.sprite_memory_index + 49] = 0xF0;
+        // A
+        self.memory[self.sprite_memory_index + 50] = 0xF0;
+        self.memory[self.sprite_memory_index + 51] = 0x90;
+        self.memory[self.sprite_memory_index + 52] = 0xF0;
+        self.memory[self.sprite_memory_index + 53] = 0x90;
+        self.memory[self.sprite_memory_index + 54] = 0x90;
+        // B
+        self.memory[self.sprite_memory_index + 55] = 0xE0;
+        self.memory[self.sprite_memory_index + 56] = 0x90;
+        self.memory[self.sprite_memory_index + 57] = 0xE0;
+        self.memory[self.sprite_memory_index + 58] = 0x90;
+        self.memory[self.sprite_memory_index + 59] = 0xE0;
+        // C
+        self.memory[self.sprite_memory_index + 60] = 0xF0;
+        self.memory[self.sprite_memory_index + 61] = 0x80;
+        self.memory[self.sprite_memory_index + 62] = 0x80;
+        self.memory[self.sprite_memory_index + 63] = 0x80;
+        self.memory[self.sprite_memory_index + 64] = 0xF0;
+        // D
+        self.memory[self.sprite_memory_index + 65] = 0xE0;
+        self.memory[self.sprite_memory_index + 66] = 0x90;
+        self.memory[self.sprite_memory_index + 67] = 0x90;
+        self.memory[self.sprite_memory_index + 68] = 0x90;
+        self.memory[self.sprite_memory_index + 69] = 0xE0;
+        // E
+        self.memory[self.sprite_memory_index + 70] = 0xF0;
+        self.memory[self.sprite_memory_index + 71] = 0x80;
+        self.memory[self.sprite_memory_index + 72] = 0xF0;
+        self.memory[self.sprite_memory_index + 73] = 0x80;
+        self.memory[self.sprite_memory_index + 74] = 0xF0;
+        // F
+        self.memory[self.sprite_memory_index + 75] = 0xF0;
+        self.memory[self.sprite_memory_index + 76] = 0x80;
+        self.memory[self.sprite_memory_index + 77] = 0xF0;
+        self.memory[self.sprite_memory_index + 78] = 0x80;
+        self.memory[self.sprite_memory_index + 79] = 0x80;
     }
 
     fn get_nonzero_memory(&self) -> u16 {
@@ -247,12 +356,12 @@ impl Emulator {
             Instruction::SKP_Vx => self.skp_vx(high_byte, keyboard),
             Instruction::SKNP_Vx => self.sknp_vx(high_byte, keyboard),
             Instruction::LD_Vx_DT => self.ld_vx_dt(high_byte),
-            Instruction::LD_Vx_K => self.missing_opcode(opcode),
+            Instruction::LD_Vx_K => self.ld_vx_k(high_byte, &keyboard),
             Instruction::LD_DT_Vx => self.ld_dt_vx(high_byte),
             Instruction::LD_ST_Vx => self.ld_st_vx(high_byte),
             Instruction::ADD_I_Vx => self.add_i_vx(high_byte),
-            Instruction::LD_F_Vx => self.missing_opcode(opcode),
-            Instruction::LD_B_Vx => self.missing_opcode(opcode),
+            Instruction::LD_F_Vx => self.ld_f_vx(high_byte),
+            Instruction::LD_B_Vx => self.ld_b_vx(high_byte),
             Instruction::LD_I_Vx => self.ld_i_vx(high_byte),
             Instruction::LD_Vx_I => self.ld_vx_i(high_byte),
             Instruction::SCD_nibble => self.missing_opcode(opcode),
@@ -480,7 +589,7 @@ impl Emulator {
         // store that key in Vx. This function assumes that a key has already been pressed.
         //TODO need to stop execution probably in the outer loop
         let sn = high_byte & 0x0F;
-        self.registers[sn as usize] = match  keyboard.get_first_key_down() {
+        self.registers[sn as usize] = match keyboard.get_first_key_down() {
             Some(i) => i,
             None => panic!("Keyboard had no keys down, execution should have paused prior to function call.")
         }
@@ -504,18 +613,30 @@ impl Emulator {
         self.address_register = self.address_register.wrapping_add(self.registers[sn as usize] as u16);
     }
 
-    fn ld_f_xv(&mut self, high_byte: u8) {
-        // TODO Not sure what exactly this instruction does
+    fn ld_f_vx(&mut self, high_byte: u8) {
+        // TODO This gets the hexidecimal digits that are stored in the 
+        // begginning section of memory (first 512 bytes).
+        // I think these can be stored in an arbitary location, but I'm not sure.
+        // I = sprite_mem_index
+        let sn = high_byte & 0x0F;
+        self.address_register = self.sprite_memory_index as u16 + (5 * self.registers[sn as usize] as u16);
     }
 
     fn ld_b_vx(&mut self, high_byte: u8) {
         // TODO take the decimal value of Vx, place the hundres digit in memory[I], tens in memory[I + 1], and ones in memory[I+2]
+        let sn = high_byte & 0x0F;
+        let value = self.registers[sn as usize];
+        self.memory[self.address_register as usize] = (value / 100);
+        self.memory[self.address_register as usize + 1] = (value % 100) / 10;
+        self.memory[self.address_register as usize + 2] = value % 10;
     }
 
     fn ld_i_vx(&mut self, high_byte: u8) {
         // store registers V0..Vx in memory starting at memory[I]
         let sn = high_byte & 0x0F;
+        println!("sn: {}", sn);
         for i in 0..=sn as usize{
+            println!("index: {}", i);
             self.memory[self.address_register as usize + i] = self.registers[i];
         }
     }
@@ -805,15 +926,14 @@ mod tests {
     }
     */
 
-    /* TODO
+    // TODO
     #[test]
     fn drw_vx_vy() {
-        let opcode: u16 = 0xD122;
-        let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
-        e.emulate(opcode, &k);
+        // let opcode: u16 = 0xD122;
+        // let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
+        // e.emulate(opcode, &k);
         assert_eq!(1,0);
     }
-    */
 
     #[test]
     fn skp_vx() {
@@ -845,76 +965,183 @@ mod tests {
         assert_eq!(e.pc, (e.program_memory_index as u16) + 4);
     }
 
-    //TODO
+    
     #[test]
     fn ld_vx_dt() {
         let opcode: u16 = 0xF107;
-        let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
+        let (mut e, k) = set_up(opcode, Instruction::LD_Vx_DT);
+        e.delay_timer_register = 0x11;
         e.emulate(opcode, &k);
-        assert_eq!(1,0);
+        assert_eq!(e.registers[1], 0x11);
+        e.delay_timer_register = 0xF3;
+        e.emulate(0xF207, &k);
+        assert_eq!(e.registers[1], 0x11);
+        assert_eq!(e.registers[2], 0xF3);
     }
 
     #[test]
     fn ld_vx_k() {
+        // execution will be paused in outer loop for this opcode
         let opcode: u16 = 0xF10A;
-        let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
+        let (mut e, mut k) = set_up(opcode, Instruction::LD_Vx_K);
+        k.keys[3] = Key::Down;
         e.emulate(opcode, &k);
-        assert_eq!(1,0);
+        assert_eq!(e.registers[1], 3);
+        k.keys[3] = Key::Up;
+        k.keys[10] = Key::Down;
+        e.emulate(opcode, &k);
+        assert_eq!(e.registers[1], 0x0A);
     }
 
     #[test]
     fn ld_dt_vx() {
         let opcode: u16 = 0xF115;
-        let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
+        let (mut e, k) = set_up(opcode, Instruction::LD_DT_Vx);
+        e.registers[1] = 0xFF;
         e.emulate(opcode, &k);
-        assert_eq!(1,0);
+        assert_eq!(e.delay_timer_register, 0xFF);
+        e.registers[0] = 0xAB;
+        e.emulate(0xF015, &k);
+        assert_eq!(e.delay_timer_register, 0xAB);
     }
 
     #[test]
     fn ld_st_vx() {
         let opcode: u16 = 0xF118;
-        let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
+        let (mut e, k) = set_up(opcode, Instruction::LD_ST_Vx);
+        e.registers[1] = 0x1C;
         e.emulate(opcode, &k);
-        assert_eq!(1,0);
+        assert_eq!(e.sound_timer_register, 0x1C);
+        e.registers[0xA] = 0x02;
+        e.emulate(0xFA18, &k);
+        assert_eq!(e.sound_timer_register, 0x02);
     }
 
     #[test]
     fn add_i_vx() {
         let opcode: u16 = 0xF11E;
-        let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
+        let (mut e, k) = set_up(opcode, Instruction::ADD_I_Vx);
+        e.address_register = 0xF12;
+        e.registers[1] = 0x3A;
         e.emulate(opcode, &k);
-        assert_eq!(1,0);
+        assert_eq!(e.address_register, 0xF4C);
+        e.registers[2] = 0x11;
+        e.emulate(0xF21E, &k);
+        assert_eq!(e.address_register, 0xF5D);
     }
 
     #[test]
     fn ld_f_xv() {
         let opcode: u16 = 0xF129;
-        let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
+        let (mut e, k) = set_up(opcode, Instruction::LD_F_Vx);
+        e.registers[1] = 0x03;
         e.emulate(opcode, &k);
-        assert_eq!(1,0);
+        assert_eq!(e.address_register, 15);
+        e.registers[3] = 0x0A;
+        e.emulate(0xF329, &k);
+        assert_eq!(e.address_register, 50);
     }
 
     #[test]
     fn ld_b_vx() {
         let opcode: u16 = 0xF133;
-        let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
+        let (mut e, k) = set_up(opcode, Instruction::LD_B_Vx);
+        e.registers[1] = 0xFF; //255
+        e.address_register = 0xF12;
         e.emulate(opcode, &k);
-        assert_eq!(1,0);
+        assert_eq!(e.memory[e.address_register as usize], 2);
+        assert_eq!(e.memory[e.address_register as usize + 1], 5);
+        assert_eq!(e.memory[e.address_register as usize + 2], 5);
+        e.registers[1] = 0x4C;
+        e.emulate(opcode, &k);
+        assert_eq!(e.memory[e.address_register as usize], 0);
+        assert_eq!(e.memory[e.address_register as usize + 1], 7);
+        assert_eq!(e.memory[e.address_register as usize + 2], 6);
+        e.registers[1] = 0x02;
+        e.emulate(opcode, &k);
+        assert_eq!(e.memory[e.address_register as usize], 0);
+        assert_eq!(e.memory[e.address_register as usize + 1], 0);
+        assert_eq!(e.memory[e.address_register as usize + 2], 2);
+
     }
 
     #[test]
     fn ld_i_vx() {
-        let opcode: u16 = 0xF155;
-        let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
+        let opcode: u16 = 0xFE55;
+        let (mut e, k) = set_up(opcode, Instruction::LD_I_Vx);
+        e.address_register = 0xF13;
+        e.registers[0] = 0x12;
+        e.registers[1] = 0xFF;
+        e.registers[2] = 0x01;
+        e.registers[3] = 0xAB;
+        e.registers[4] = 0x77;
+        e.registers[5] = 0x23;
+        e.registers[6] = 0xB7;
+        e.registers[7] = 0x4B;
+        e.registers[8] = 0xBB;
+        e.registers[9] = 0x2B;
+        e.registers[0xA] = 0xBB;
+        e.registers[0xB] = 0xA2;
+        e.registers[0xC] = 0xBB;
+        e.registers[0xD] = 0xBB;
+        e.registers[0xE] = 0xBB;
+
         e.emulate(opcode, &k);
-        assert_eq!(1,0);
+        assert_eq!(e.memory[e.address_register as usize + 0], 0x12);
+        assert_eq!(e.memory[e.address_register as usize + 1], 0xFF);
+        assert_eq!(e.memory[e.address_register as usize + 2], 0x01);
+        assert_eq!(e.memory[e.address_register as usize + 3], 0xAB);
+        assert_eq!(e.memory[e.address_register as usize + 4], 0x77);
+        assert_eq!(e.memory[e.address_register as usize + 5], 0x23);
+        assert_eq!(e.memory[e.address_register as usize + 6], 0xB7);
+        assert_eq!(e.memory[e.address_register as usize + 7], 0x4B);
+        assert_eq!(e.memory[e.address_register as usize + 8], 0xBB);
+        assert_eq!(e.memory[e.address_register as usize + 9], 0x2B);
+        assert_eq!(e.memory[e.address_register as usize + 10], 0xBB);
+        assert_eq!(e.memory[e.address_register as usize + 11], 0xA2);
+        assert_eq!(e.memory[e.address_register as usize + 12], 0xBB);
+        assert_eq!(e.memory[e.address_register as usize + 13], 0xBB);
+        assert_eq!(e.memory[e.address_register as usize + 14], 0xBB);
+
+
     }
 
     #[test]
     fn ld_vx_i() {
-        let opcode: u16 = 0xF165;
-        let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
+        let opcode: u16 = 0xFE65;
+        let (mut e, k) = set_up(opcode, Instruction::LD_Vx_I);
+        e.address_register = 0xF42;
+        e.memory[e.address_register as usize + 0] = 0x11;
+        e.memory[e.address_register as usize + 1] = 0x12;
+        e.memory[e.address_register as usize + 2] = 0x13;
+        e.memory[e.address_register as usize + 3] = 0x14;
+        e.memory[e.address_register as usize + 4] = 0x15;
+        e.memory[e.address_register as usize + 5] = 0x16;
+        e.memory[e.address_register as usize + 6] = 0x17;
+        e.memory[e.address_register as usize + 7] = 0x18;
+        e.memory[e.address_register as usize + 8] = 0x19;
+        e.memory[e.address_register as usize + 9] = 0x1A;
+        e.memory[e.address_register as usize + 10] = 0x75;
+        e.memory[e.address_register as usize + 11] = 0x65;
+        e.memory[e.address_register as usize + 12] = 0x45;
+        e.memory[e.address_register as usize + 13] = 0x35;
+        e.memory[e.address_register as usize + 14] = 0x34;
         e.emulate(opcode, &k);
-        assert_eq!(1,0);
+        assert_eq!(e.registers[0], 0x11);
+        assert_eq!(e.registers[1], 0x12);
+        assert_eq!(e.registers[2], 0x13);
+        assert_eq!(e.registers[3], 0x14);
+        assert_eq!(e.registers[4], 0x15);
+        assert_eq!(e.registers[5], 0x16);
+        assert_eq!(e.registers[6], 0x17);
+        assert_eq!(e.registers[7], 0x18);
+        assert_eq!(e.registers[8], 0x19);
+        assert_eq!(e.registers[9], 0x1A);
+        assert_eq!(e.registers[10], 0x75);
+        assert_eq!(e.registers[11], 0x65);
+        assert_eq!(e.registers[12], 0x45);
+        assert_eq!(e.registers[13], 0x35);
+        assert_eq!(e.registers[14], 0x34);
+
     }
 }
