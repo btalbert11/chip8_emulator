@@ -1,4 +1,5 @@
-use chip8_emulator::{Emulator, Keyboard};
+use chip8_emulator::emulator::{Emulator, Keyboard};
+use chip8_emulator::instruction::Instruction;
 use std::{process::exit, env, fs};
 // use winit::{
 //     event_loop::EventLoop,
