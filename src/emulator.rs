@@ -1,42 +1,12 @@
 use std::fmt;
 use rand::Rng;
-use crate::instruction::Instruction;
+use crate::{
+    instruction::Instruction, 
+    screen::Screen,
+    keyboard::{Key, Keyboard},
+};
 
 
-#[derive(Copy, Clone, Debug)]
-enum Key {
-    Up,
-    Down
-}
-
-pub struct Keyboard {
-    keys: [Key; 16]
-}
-
-impl Keyboard {
-    pub fn new() -> Keyboard {
-        Keyboard {
-            keys: [Key::Up; 16]
-        }
-    }
-
-    pub fn is_key_down(&self, index: u8) -> bool {
-        match self.keys[index as usize] {
-            Key::Up => false,
-            Key::Down => true,
-        }
-    }
-
-    pub fn get_first_key_down(&self) -> Option<u8> {
-        for (i, key) in self.keys.iter().enumerate() {
-            match key {
-                Key::Down => return Some(i as u8),
-                _ => ()
-            }
-        }
-        None
-    }
- }
 
 
 pub struct Emulator {
@@ -200,10 +170,20 @@ impl Emulator {
         }
     }
 
-    pub fn emulate(&mut self, opcode: u16, keyboard: &Keyboard) {
+    // read PC opcode and run it
+    pub fn emulate_step(&mut self, keyboard: &Keyboard, screen: &mut Screen) {
+        let first_byte = self.memory[self.pc as usize];
+        let second_byte = self.memory[(self.pc + 1) as usize];
+        let opcode: u16 = ((first_byte as u16) << 8) | (second_byte as u16);
+        // println!("{:#04x}, {:#04x}, {:#04x}, {:#06x}", self.pc, first_byte, second_byte, opcode);
+        self.emulate(opcode, &keyboard, screen);
+        self.pc += 2;
+    }
+
+    pub fn emulate(&mut self, opcode: u16, keyboard: &Keyboard, screen: &mut Screen) {
         let high_byte: u8 = ((opcode >> 8) & 0xFF) as u8;
         let low_byte: u8 = (opcode & 0xFF) as u8;
-        println!("high: {:#04x}, low: {:#04x}", high_byte, low_byte);
+        // println!("high: {:#04x}, low: {:#04x}", high_byte, low_byte);
 
         match Instruction::parse_opcode(opcode) {
             Instruction::SYS_addr => self.sys_addr(),
@@ -229,7 +209,7 @@ impl Emulator {
             Instruction::LD_I => self.ld_i(opcode),
             Instruction::JP_V0 => self.jp_v0(opcode),
             Instruction::RND_Vx => self.rnd_vx(high_byte, low_byte),
-            Instruction::DRW_Vx_Vy => self.missing_opcode(opcode),
+            Instruction::DRW_Vx_Vy => self.drw_vx_vy(high_byte, low_byte, screen),
             Instruction::SKP_Vx => self.skp_vx(high_byte, keyboard),
             Instruction::SKNP_Vx => self.sknp_vx(high_byte, keyboard),
             Instruction::LD_Vx_DT => self.ld_vx_dt(high_byte),
@@ -361,7 +341,6 @@ impl Emulator {
             self.registers[self.flag_register_index as usize] = 0;
         }
         self.registers[second_nibble as usize] = self.registers[second_nibble as usize].wrapping_add(self.registers[third_nibble as usize]);
-        // TODO CHECK THIS FUNCTION
     }
 
     fn sub_vx_vy(&mut self, high_byte: u8, low_byte: u8) {
@@ -432,8 +411,10 @@ impl Emulator {
         self.registers[second_nibble as usize] = rn & low_byte;
     }
 
-    fn drw_vx_vy(&mut self, high_byte: u8, low_byte: u8) {
-        // draw a sprite that is n bytes, from memory address I, starting at coordinates (Vx,Vy)
+    fn drw_vx_vy(&mut self, high_byte: u8, low_byte: u8, screen: &mut Screen) {
+        // draw a sprite that is n bytes, from memory address I, starting at coordinates (Vx,Vy).
+        // If an on pixel is already set at any point in the sprite, it is set to off and VF is set.
+        // From my understanding the only way a pixel is set to off is by this collision.
         let second_nibble = high_byte & 0x0F;
         let third_nibble = (low_byte & 0xF0) >> 4;
         let last_nibble = low_byte & 0x0F;
@@ -500,7 +481,7 @@ impl Emulator {
     }
 
     fn ld_b_vx(&mut self, high_byte: u8) {
-        // TODO take the decimal value of Vx, place the hundres digit in memory[I], tens in memory[I + 1], and ones in memory[I+2]
+        // take the decimal value of Vx, place the hundres digit in memory[I], tens in memory[I + 1], and ones in memory[I+2]
         let sn = high_byte & 0x0F;
         let value = self.registers[sn as usize];
         self.memory[self.address_register as usize] = (value / 100);
@@ -554,12 +535,19 @@ mod tests {
         let k = Keyboard::new();
         (e, k)
     }
-    
+
+
+    // This function is just so I dont have to rewrite all my tests. Yes I know its bad
+    fn no_screen_test(opcode: u16, e: &mut Emulator, k: &Keyboard) {
+        let mut s = Screen::new(1, 1);
+        e.emulate(opcode, k, &mut s)
+    }
+
     #[test]
     fn jp_addr() {
         let opcode = 0x12F3;
         let (mut e, k) = set_up(opcode, Instruction::JP_addr);
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.pc, 0x2F3);
     }
 
@@ -567,7 +555,7 @@ mod tests {
     fn cls() {
         let opcode = 0x00E0;
         let (mut e, k) = set_up(opcode, Instruction::CLS);
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(1, 0);
     }
 
@@ -577,7 +565,7 @@ mod tests {
         let (mut e, k) = set_up(opcode, Instruction::RET);
         e.stack[1] = 0x123;
         e.sp = 1;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.pc, 0x123);
         assert_eq!(e.sp, 0);
     }
@@ -587,7 +575,7 @@ mod tests {
         let opcode: u16 = 0x23E4;
         let (mut e, k) = set_up(opcode, Instruction::CALL_addr);
         e.pc = 0x123;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.sp, 1);
         assert_eq!(e.stack[1], 0x123);
         assert_eq!(e.pc, 0x3E4);
@@ -598,9 +586,9 @@ mod tests {
         let opcode: u16 = 0x3123;
         let (mut e, k) = set_up(opcode, Instruction::SE_Vx);
         e.registers[1] = 0x23;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index + 2) as u16);
-        e.emulate(0x3111, &k);
+        no_screen_test(0x3111, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index + 2) as u16);
     }
 
@@ -609,9 +597,9 @@ mod tests {
         let opcode: u16 = 0x4123;
         let (mut e, k) = set_up(opcode, Instruction::SNE_Vx);
         e.registers[1] = 0x23;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index) as u16);
-        e.emulate(0x4111, &k);
+        no_screen_test(0x4111, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index + 2) as u16);
     }
 
@@ -621,10 +609,10 @@ mod tests {
         let (mut e, k) = set_up(opcode, Instruction::SE_Vx_Vy);
         e.registers[1] = 0xF1;
         e.registers[2] = 0xF1;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index + 2)as u16);
         e.registers[2] = 0xFF;
-        e.emulate(0x5120, &k);
+        no_screen_test(0x5120, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index + 2) as u16);
     }
 
@@ -632,7 +620,7 @@ mod tests {
     fn ld_vx() {
         let opcode: u16 = 0x6123;
         let (mut e, k) = set_up(opcode, Instruction::LD_Vx);
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 0x23);
     }
     
@@ -641,7 +629,7 @@ mod tests {
         let opcode: u16 = 0x7123;
         let (mut e, k) = set_up(opcode, Instruction::ADD_Vx);
         e.registers[1] = 15;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 15 + 0x23);
     }
 
@@ -650,7 +638,7 @@ mod tests {
         let opcode: u16 = 0x8120;
         let (mut e, k) = set_up(opcode, Instruction::LD_Vx_Vy);
         e.registers[2] = 0xF3;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], e.registers[2]);
     }
 
@@ -660,7 +648,7 @@ mod tests {
         let (mut e, k) = set_up(opcode, Instruction::OR_Vx_Vy);
         e.registers[1] = 0xF0;
         e.registers[2] = 0x0F;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 0xFF);
     }
 
@@ -670,7 +658,7 @@ mod tests {
         let (mut e, k) = set_up(opcode, Instruction::AND_Vx_Vy);
         e.registers[1] = 0xA0;
         e.registers[2] = 0xDF;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 0x80);
     }
 
@@ -680,7 +668,7 @@ mod tests {
         let (mut e, k) = set_up(opcode, Instruction::XOR_Vx_Vy);
         e.registers[1] = 0xA0;
         e.registers[2] = 0xDF;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 0x7F);
     }
 
@@ -690,12 +678,12 @@ mod tests {
         let (mut e, k) = set_up(opcode, Instruction::ADD_Vx_Vy);
         e.registers[1] = 12;
         e.registers[2] = 24;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 36);
         assert_eq!(e.registers[e.flag_register_index], 0);
         e.registers[1] = 254;
         e.registers[2] = 2;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 0);
         assert_eq!(e.registers[e.flag_register_index], 1);
     }
@@ -706,11 +694,11 @@ mod tests {
         let (mut e, k) = set_up(opcode, Instruction::SUB_Vx_Vy);
         e.registers[1] = 12;
         e.registers[2] = 6;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 6);
         assert_eq!(e.registers[e.flag_register_index], 1);
         e.registers[2] = 12;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 250);
         assert_eq!(e.registers[e.flag_register_index], 0);
     }
@@ -721,11 +709,11 @@ mod tests {
         let opcode: u16 = 0x8126;
         let (mut e, k) = set_up(opcode, Instruction::SHR_Vx);
         e.registers[1] = 0x0D;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 0x06);
         assert_eq!(e.registers[e.flag_register_index], 1);
         e.registers[1] = 0xFE;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 0x7F);
         assert_eq!(e.registers[e.flag_register_index], 0);
     }
@@ -736,11 +724,11 @@ mod tests {
         let (mut e, k) = set_up(opcode, Instruction::SUBN_Vx_Vy);
         e.registers[1] = 6;
         e.registers[2] = 12;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 6);
         assert_eq!(e.registers[e.flag_register_index], 1);
         e.registers[2] = 1;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 251);
         assert_eq!(e.registers[e.flag_register_index], 0);
     }
@@ -750,11 +738,11 @@ mod tests {
         let opcode: u16 = 0x812E;
         let (mut e, k) = set_up(opcode, Instruction::SHL_Vx);
         e.registers[1] = 0xF0;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 0xE0);
         assert_eq!(e.registers[e.flag_register_index], 1);
         e.registers[1] = 0x7E;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 0xFC);
         assert_eq!(e.registers[e.flag_register_index], 0);
     }
@@ -765,10 +753,10 @@ mod tests {
         let (mut e, k) = set_up(opcode, Instruction::SNE_Vx_Vy);
         e.registers[1] = 0xF0;
         e.registers[2] = 0xF0;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.pc, e.program_memory_index as u16);
         e.registers[2] = 0xFF;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.pc,(e.program_memory_index as u16) + 2);
     }
 
@@ -776,9 +764,9 @@ mod tests {
     fn ld_i() {
         let opcode: u16 = 0xA111;
         let (mut e, k) = set_up(opcode, Instruction::LD_I);
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.address_register, 0x0111);
-        e.emulate(0xAF02, &k);
+        no_screen_test(0xAF02, &mut e, &k);
         assert_eq!(e.address_register, 0x0F02);
     }
 
@@ -787,9 +775,9 @@ mod tests {
         let opcode: u16 = 0xB111;
         let (mut e, k) = set_up(opcode, Instruction::JP_V0);
         e.registers[0] = 0x72;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.pc, 0x0183);
-        e.emulate(0xB100, &k);
+        no_screen_test(0xB100, &mut e, &k);
         assert_eq!(e.pc, 0x0172);
     }
 
@@ -799,7 +787,7 @@ mod tests {
     fn rnd_vx() {
         let opcode: u16 = 0xC1FF;
         let (mut e, k) = set_up(opcode, Instruction::RND_Vx);
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(1,0);
     }
     */
@@ -809,7 +797,7 @@ mod tests {
     fn drw_vx_vy() {
         // let opcode: u16 = 0xD122;
         // let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
-        // e.emulate(opcode, &k);
+        // no_screen_test(opcode, &mut e, &k);
         assert_eq!(1,0);
     }
 
@@ -818,13 +806,13 @@ mod tests {
         let opcode: u16 = 0xE19E;
         let (mut e, mut k) = set_up(opcode, Instruction::SKP_Vx);
         e.registers[1] = 0x03;
-        k.keys[3] = Key::Down;
-        e.emulate(opcode, &k);
+        k.set_key(3, Key::Down);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index as u16) + 2);
-        e.emulate(0xE29, &k);
+        no_screen_test(0xE29, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index as u16) + 2);
-        k.keys[3] = Key::Up;
-        e.emulate(opcode, &k);
+        k.set_key(3, Key::Up);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index as u16) + 2);
     }
 
@@ -833,13 +821,13 @@ mod tests {
         let opcode: u16 = 0xE1A1;
         let (mut e, mut k) = set_up(opcode, Instruction::SKNP_Vx);
         e.registers[1] = 0x03;
-        k.keys[3] = Key::Down;
-        e.emulate(opcode, &k);
+        k.set_key(3, Key::Down);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index as u16));
-        e.emulate(0xE2A1, &k);
+        no_screen_test(0xE2A1, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index as u16) + 2);
-        k.keys[3] = Key::Up;
-        e.emulate(opcode, &k);
+        k.set_key(3, Key::Up);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index as u16) + 4);
     }
 
@@ -849,10 +837,10 @@ mod tests {
         let opcode: u16 = 0xF107;
         let (mut e, k) = set_up(opcode, Instruction::LD_Vx_DT);
         e.delay_timer_register = 0x11;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 0x11);
         e.delay_timer_register = 0xF3;
-        e.emulate(0xF207, &k);
+        no_screen_test(0xF207, &mut e, &k);
         assert_eq!(e.registers[1], 0x11);
         assert_eq!(e.registers[2], 0xF3);
     }
@@ -862,12 +850,12 @@ mod tests {
         // execution will be paused in outer loop for this opcode
         let opcode: u16 = 0xF10A;
         let (mut e, mut k) = set_up(opcode, Instruction::LD_Vx_K);
-        k.keys[3] = Key::Down;
-        e.emulate(opcode, &k);
+        k.set_key(3, Key::Down);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 3);
-        k.keys[3] = Key::Up;
-        k.keys[10] = Key::Down;
-        e.emulate(opcode, &k);
+        k.set_key(3, Key::Up);
+        k.set_key(10, Key::Down);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 0x0A);
     }
 
@@ -876,10 +864,10 @@ mod tests {
         let opcode: u16 = 0xF115;
         let (mut e, k) = set_up(opcode, Instruction::LD_DT_Vx);
         e.registers[1] = 0xFF;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.delay_timer_register, 0xFF);
         e.registers[0] = 0xAB;
-        e.emulate(0xF015, &k);
+        no_screen_test(0xF015, &mut e, &k);
         assert_eq!(e.delay_timer_register, 0xAB);
     }
 
@@ -888,10 +876,10 @@ mod tests {
         let opcode: u16 = 0xF118;
         let (mut e, k) = set_up(opcode, Instruction::LD_ST_Vx);
         e.registers[1] = 0x1C;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.sound_timer_register, 0x1C);
         e.registers[0xA] = 0x02;
-        e.emulate(0xFA18, &k);
+        no_screen_test(0xFA18, &mut e, &k);
         assert_eq!(e.sound_timer_register, 0x02);
     }
 
@@ -901,10 +889,10 @@ mod tests {
         let (mut e, k) = set_up(opcode, Instruction::ADD_I_Vx);
         e.address_register = 0xF12;
         e.registers[1] = 0x3A;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.address_register, 0xF4C);
         e.registers[2] = 0x11;
-        e.emulate(0xF21E, &k);
+        no_screen_test(0xF21E, &mut e, &k);
         assert_eq!(e.address_register, 0xF5D);
     }
 
@@ -913,10 +901,10 @@ mod tests {
         let opcode: u16 = 0xF129;
         let (mut e, k) = set_up(opcode, Instruction::LD_F_Vx);
         e.registers[1] = 0x03;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.address_register, 15);
         e.registers[3] = 0x0A;
-        e.emulate(0xF329, &k);
+        no_screen_test(0xF329, &mut e, &k);
         assert_eq!(e.address_register, 50);
     }
 
@@ -926,17 +914,17 @@ mod tests {
         let (mut e, k) = set_up(opcode, Instruction::LD_B_Vx);
         e.registers[1] = 0xFF; //255
         e.address_register = 0xF12;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.memory[e.address_register as usize], 2);
         assert_eq!(e.memory[e.address_register as usize + 1], 5);
         assert_eq!(e.memory[e.address_register as usize + 2], 5);
         e.registers[1] = 0x4C;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.memory[e.address_register as usize], 0);
         assert_eq!(e.memory[e.address_register as usize + 1], 7);
         assert_eq!(e.memory[e.address_register as usize + 2], 6);
         e.registers[1] = 0x02;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.memory[e.address_register as usize], 0);
         assert_eq!(e.memory[e.address_register as usize + 1], 0);
         assert_eq!(e.memory[e.address_register as usize + 2], 2);
@@ -964,7 +952,7 @@ mod tests {
         e.registers[0xD] = 0xBB;
         e.registers[0xE] = 0xBB;
 
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.memory[e.address_register as usize + 0], 0x12);
         assert_eq!(e.memory[e.address_register as usize + 1], 0xFF);
         assert_eq!(e.memory[e.address_register as usize + 2], 0x01);
@@ -1004,7 +992,7 @@ mod tests {
         e.memory[e.address_register as usize + 12] = 0x45;
         e.memory[e.address_register as usize + 13] = 0x35;
         e.memory[e.address_register as usize + 14] = 0x34;
-        e.emulate(opcode, &k);
+        no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[0], 0x11);
         assert_eq!(e.registers[1], 0x12);
         assert_eq!(e.registers[2], 0x13);

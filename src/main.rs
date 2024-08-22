@@ -1,10 +1,20 @@
-use chip8_emulator::emulator::{Emulator, Keyboard};
+use chip8_emulator::emulator::Emulator;
+use chip8_emulator::keyboard::Keyboard;
 use chip8_emulator::instruction::Instruction;
-use std::{process::exit, env, fs};
-// use winit::{
-//     event_loop::EventLoop,
-//     window::{Window, WindowBuilder},
-// };
+use chip8_emulator::screen::Screen;
+use std::{time::{ Duration, Instant}, process::exit, env, fs};
+use winit::{
+    dpi::LogicalSize,
+    event::{Event, VirtualKeyCode},
+    event_loop::{EventLoop, ControlFlow},
+    window::WindowBuilder,
+};
+use winit_input_helper::WinitInputHelper;
+use pixels::{Error, Pixels, SurfaceTexture};
+
+
+const WIDTH: u8 = 64;
+const HEIGHT: u8 = 32;
 
 fn load_rom(filename: &str, e: &mut Emulator) {
     let contents = fs::read(filename)
@@ -16,8 +26,10 @@ fn load_rom(filename: &str, e: &mut Emulator) {
 
 }
 
-fn main() {
 
+
+fn main() -> Result<(), Error>{
+    env_logger::init();
     let args: Vec<String> = env::args().collect();
     dbg!(&args);
     if args.len() != 2 {
@@ -27,19 +39,83 @@ fn main() {
 
     let mut e = Emulator::new();
     let mut k = Keyboard::new();
+    let mut s = Screen::new(WIDTH, HEIGHT);
     load_rom(&args[1], &mut e);
     e.print_memory();
     println!("{:?}", e);
 
 
-    // // TODO write emulate loop
-    // let event_loop = EventLoop::new();
-    // let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let event_loop = EventLoop::new();
+    let mut input = WinitInputHelper::new();
+
+    let window = {
+        let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
+        let scaled_size = LogicalSize::new(WIDTH as f64 * 3.0, HEIGHT as f64 * 3.0);
+        WindowBuilder::new()
+            .with_title("Chip8")
+            .with_inner_size(scaled_size)
+            .with_min_inner_size(size)
+            .build(&event_loop).unwrap()
+    };
+
+    let mut pixels = {
+        let window_size = window.inner_size();
+        let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
+        Pixels::new(WIDTH as u32, HEIGHT as u32, surface_texture)?
+    };
+
 
     // e.emulate(0x00E0, &k);
-    e.emulate(0x1723, &k);
-    e.emulate(0x2123, &k);
-    e.emulate(0x00EE, &k);
-    e.emulate(0x3F23, &k);
-    e.emulate(0x5AF0, &k);
+    // e.emulate(0x1723, &k);
+    // e.emulate(0x2123, &k);
+    // e.emulate(0x00EE, &k);
+    // e.emulate(0x3F23, &k);
+    // e.emulate(0x5AF0, &k);
+
+
+    let mut time_mark = Instant::now();
+    event_loop.run(move |event, _, control_flow| {
+        e.emulate_step(&k, &mut s);
+
+        if let Event::RedrawRequested(_) = event {
+            draw_pixels(pixels.frame_mut(), s.screen_to_render());
+            if let Err(err) = pixels.render() {
+                print!("PIXEL DRAW ERROR");
+                *control_flow = ControlFlow::Exit;
+                return
+            }
+        }
+
+        if input.update(&event) {
+            if input.key_pressed(VirtualKeyCode::Escape) || input.close_requested() {
+                *control_flow = ControlFlow::Exit;
+                return
+            }
+
+            if let Some(size) = input.window_resized() {
+                if let Err(err) = pixels.resize_surface(size.width, size.height) {
+                    println!("PIXEL RESIZE ERROR");
+                    *control_flow = ControlFlow::Exit;
+                    return
+                }
+            }
+        }
+
+        let now = Instant::now();
+        if let Some(time_passed) = now.checked_duration_since(time_mark) {
+            if time_passed.as_micros() > 16 {
+                println!("time passed = {}, redraw requested", time_passed.as_micros());
+                window.request_redraw();
+                time_mark = Instant::now();
+            }
+        }
+    });
+
+    Ok(())
+}
+
+fn draw_pixels(pixels_buffer: &mut [u8], screen_buffer: Vec<[u8; 4]>) {
+    for (pixel, cell) in pixels_buffer.chunks_exact_mut(4).zip(screen_buffer.iter()) {
+        pixel.copy_from_slice(cell);
+    }
 }

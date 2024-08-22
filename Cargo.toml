@@ -7,4 +7,7 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8.5"
-winit = "0.30.5"
+winit = "0.28"
+winit_input_helper = "0.14"
+pixels = "0.13.0"
+env_logger = "0.11.5"
