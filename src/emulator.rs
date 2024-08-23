@@ -187,7 +187,7 @@ impl Emulator {
 
         match Instruction::parse_opcode(opcode) {
             Instruction::SYS_addr => self.sys_addr(),
-            Instruction::CLS => self.missing_opcode(opcode),
+            Instruction::CLS => self.cls(screen),
             Instruction::RET => self.ret(),
             Instruction::JP_addr => self.jp_addr(opcode),
             Instruction::CALL_addr => self.call_addr(opcode),
@@ -240,9 +240,8 @@ impl Emulator {
         return
     }
 
-    fn cls (&mut self) {
-        // clear the display, set all values to 0
-        // TODO
+    fn cls (&self, screen: &mut Screen) {
+        screen.clear_screen();
     }
 
     fn ret (&mut self) {
@@ -414,11 +413,20 @@ impl Emulator {
     fn drw_vx_vy(&mut self, high_byte: u8, low_byte: u8, screen: &mut Screen) {
         // draw a sprite that is n bytes, from memory address I, starting at coordinates (Vx,Vy).
         // If an on pixel is already set at any point in the sprite, it is set to off and VF is set.
+        // if the starting position is off the screen, it wraps around to the other side. This only happens
+        // for the starting pixel.
+        // TODO Find more references to make sure the wrapping is correct
         // From my understanding the only way a pixel is set to off is by this collision.
         let second_nibble = high_byte & 0x0F;
         let third_nibble = (low_byte & 0xF0) >> 4;
         let last_nibble = low_byte & 0x0F;
-        //TODO implement this with display 
+        let mut flag_set: u8 = 0;
+        let x = self.registers[second_nibble as usize];
+        let y = self.registers[third_nibble as usize];
+        for (i, sprite_byte) in self.memory[(self.address_register as usize) .. (self.address_register + (last_nibble as u16)) as usize].iter().enumerate() {
+            if (screen.set_byte_pixels(*sprite_byte, x as u32, (y as u32) + (i as u32))) { flag_set = 1; }
+        }
+        self.registers[self.flag_register_index] = flag_set; 
     }
 
     fn skp_vx(&mut self, high_byte: u8, keyboard: &Keyboard) {
@@ -555,8 +563,19 @@ mod tests {
     fn cls() {
         let opcode = 0x00E0;
         let (mut e, k) = set_up(opcode, Instruction::CLS);
-        no_screen_test(opcode, &mut e, &k);
-        assert_eq!(1, 0);
+        let mut s = Screen::new(2, 2);
+        s.set_pixel(1, 1);
+        s.set_pixel(0, 1);
+        let output = s.screen_to_render();
+        let c: [u8; 4] = [0xFF, 0xFF, 0xFF, 0xFF];
+        let z = [0, 0, 0, 0];
+        let comparison = vec![z, z, c, c];
+        assert_eq!(output, comparison);   
+        e.emulate(opcode, &k, &mut s);
+
+        let output = s.screen_to_render();
+        let comparison: Vec<[u8; 4]> = vec![z, z, z, z];
+        assert_eq!(output, comparison);   
     }
 
     #[test]
@@ -795,10 +814,37 @@ mod tests {
     // TODO
     #[test]
     fn drw_vx_vy() {
-        // let opcode: u16 = 0xD122;
-        // let (mut e, k) = set_up(opcode, Instruction::SYS_addr);
-        // no_screen_test(opcode, &mut e, &k);
-        assert_eq!(1,0);
+        let opcode: u16 = 0xD125;
+        let (mut e, k) = set_up(opcode, Instruction::DRW_Vx_Vy);
+        let mut s = Screen::new(8, 8);
+        e.address_register = 0x235;
+        e.memory[0x235] = 0xFF;
+        e.memory[0x236] = 0;
+        e.memory[0x237] = 0xFF;
+        e.memory[0x238] = 0;
+        e.memory[0x239] = 0xFF;
+
+        e.registers[1] = 0;
+        e.registers[2] = 3;
+        e.emulate(opcode, &k, &mut s);
+
+        let output = s.screen_to_render();
+        let c: [u8; 4] = [0xFF, 0xFF, 0xFF, 0xFF];
+        let z: [u8; 4] = [0, 0, 0, 0];
+        let comparison: Vec<[u8; 4]> = vec![
+            z, z, z, z, z, z, z, z,
+            z, z, z, z, z, z, z, z,
+            z, z, z, z, z, z, z, z,
+            c, c, c, c, c, c, c, c,
+            z, z, z, z, z, z, z, z,
+            c, c, c, c, c, c, c, c,
+            z, z, z, z, z, z, z, z,
+            c, c, c, c, c, c, c, c,
+        ];
+
+        assert_eq!(output, comparison);
+
+        // assert_eq!(1,0);
     }
 
     #[test]

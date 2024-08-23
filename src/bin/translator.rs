@@ -30,7 +30,7 @@ fn translate_instruction(first_byte: u8, second_byte: u8) -> Option<String> {
         Instruction::SNE_Vx_Vy => Some(String::from(format!(""))),
         Instruction::LD_I => Some(String::from(format!("LD_I, {:#06x}", opcode & 0x0FFF))),
         Instruction::JP_V0 => Some(String::from(format!(""))),
-        Instruction::RND_Vx => Some(String::from(format!("RND_Vx, V{:#04x}, {:#04x}", sn, second_byte))),
+        Instruction::RND_Vx => Some(String::from(format!("RND_Vx, V{}, {:#04x}", sn, second_byte))),
         Instruction::DRW_Vx_Vy => Some(String::from(format!("DRW_Vx_Vy, V{}, V{}, {:#04x}", sn, tn, fourth_nibble))),
         Instruction::SKP_Vx => Some(String::from(format!(""))),
         Instruction::SKNP_Vx => Some(String::from(format!(""))),

@@ -13,13 +13,13 @@ use winit_input_helper::WinitInputHelper;
 use pixels::{Error, Pixels, SurfaceTexture};
 
 
-const WIDTH: u8 = 64;
-const HEIGHT: u8 = 32;
+const WIDTH: u32 = 64;
+const HEIGHT: u32 = 32;
 
 fn load_rom(filename: &str, e: &mut Emulator) {
     let contents = fs::read(filename)
         .expect("Rom file not found.");
-    dbg!(&contents);
+    // dbg!(&contents);
     for i in 0..contents.len() {
         e.set_memory(contents[i], i + 0x200);
     }
@@ -37,12 +37,21 @@ fn main() -> Result<(), Error>{
         exit(-1);
     }
 
+    let mut test_screen = Screen::new(WIDTH, HEIGHT);
+    for j in (0..WIDTH).step_by(8) {
+       for i in 0..HEIGHT {
+           test_screen.set_byte_pixels(0xCC, j,i);
+       }
+    }
+
+    dbg!(test_screen.screen_to_render());
+
     let mut e = Emulator::new();
     let mut k = Keyboard::new();
     let mut s = Screen::new(WIDTH, HEIGHT);
     load_rom(&args[1], &mut e);
-    e.print_memory();
-    println!("{:?}", e);
+    // e.print_memory();
+    // println!("{:?}", e);
 
 
     let event_loop = EventLoop::new();
@@ -65,20 +74,12 @@ fn main() -> Result<(), Error>{
     };
 
 
-    // e.emulate(0x00E0, &k);
-    // e.emulate(0x1723, &k);
-    // e.emulate(0x2123, &k);
-    // e.emulate(0x00EE, &k);
-    // e.emulate(0x3F23, &k);
-    // e.emulate(0x5AF0, &k);
-
-
     let mut time_mark = Instant::now();
     event_loop.run(move |event, _, control_flow| {
         e.emulate_step(&k, &mut s);
 
         if let Event::RedrawRequested(_) = event {
-            draw_pixels(pixels.frame_mut(), s.screen_to_render());
+            draw_pixels(pixels.frame_mut(), &s.screen_to_render());
             if let Err(err) = pixels.render() {
                 print!("PIXEL DRAW ERROR");
                 *control_flow = ControlFlow::Exit;
@@ -101,20 +102,23 @@ fn main() -> Result<(), Error>{
             }
         }
 
-        let now = Instant::now();
-        if let Some(time_passed) = now.checked_duration_since(time_mark) {
-            if time_passed.as_micros() > 16 {
-                println!("time passed = {}, redraw requested", time_passed.as_micros());
-                window.request_redraw();
-                time_mark = Instant::now();
-            }
-        }
+        // let now = Instant::now();
+        // if let Some(time_passed) = now.checked_duration_since(time_mark) {
+        //     if time_passed.as_micros() > 16 {
+        //         println!("time passed = {}, redraw requested", time_passed.as_micros());
+        //         window.request_redraw();
+        //         time_mark = Instant::now();
+        //     }
+        // }
+        window.request_redraw();
+
     });
 
     Ok(())
 }
 
-fn draw_pixels(pixels_buffer: &mut [u8], screen_buffer: Vec<[u8; 4]>) {
+fn draw_pixels(pixels_buffer: &mut [u8], screen_buffer: &Vec<[u8; 4]>) {
+    println!("DRAW CALLED");
     for (pixel, cell) in pixels_buffer.chunks_exact_mut(4).zip(screen_buffer.iter()) {
         pixel.copy_from_slice(cell);
     }
