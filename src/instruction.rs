@@ -112,3 +112,15 @@ impl Instruction {
 
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn non_variable_instructions() {
+        //TODO
+        assert_eq!(1, 0)
+    }
+}

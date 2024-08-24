@@ -6,6 +6,8 @@ use crate::{
     keyboard::{Key, Keyboard},
 };
 
+use std::time::{Instant, Duration};
+
 
 
 
@@ -23,6 +25,7 @@ pub struct Emulator {
     eti_660_memory_index: usize,
     sprite_memory_index: usize,
     stack: [u16; 16],
+    time_counter: Instant,
 }
 
 
@@ -42,6 +45,7 @@ impl Emulator {
             eti_660_memory_index: 0x600,
             sprite_memory_index: 0x000,
             stack: [0; 16],
+            time_counter: Instant::now(),
         };
         e.set_character_sprites();
         e
@@ -170,22 +174,45 @@ impl Emulator {
         }
     }
 
-    // read PC opcode and run it
+    fn decrement_counters(&mut self) {
+        let delay = self.time_counter.elapsed().as_millis();
+        if delay < 17 { return; }
+        if self.delay_timer_register > 0 {
+            if delay >= self.delay_timer_register.into() { self.delay_timer_register = 0; }
+            else {self.delay_timer_register -= (delay / 17) as u8; }
+        }
+        if self.sound_timer_register > 0 {
+            if delay >= self.sound_timer_register.into() { self.sound_timer_register = 0; }
+            else { self.sound_timer_register -= (delay / 17) as u8; }
+        }
+
+        self.time_counter = Instant::now();
+    }
+
+    // This function handles all "External" aspects of opcode, i.e. updating timers,
+    // waiting for input, incrememting pc or not, etc.
     pub fn emulate_step(&mut self, keyboard: &Keyboard, screen: &mut Screen) {
+        self.decrement_counters();
         let first_byte = self.memory[self.pc as usize];
         let second_byte = self.memory[(self.pc + 1) as usize];
         let opcode: u16 = ((first_byte as u16) << 8) | (second_byte as u16);
-        // TODO pause here for keyboard input opcode
+        println!("{:#06x}, high: {:#04x}, low: {:#04x}", self.pc, first_byte, second_byte);
         let curr_instruction = Instruction::parse_opcode(opcode);
-        match curr_instruction {
-            Instruction::LD_Vx_K => todo!(),
+        match curr_instruction { // Can I just return here?
+            Instruction::LD_Vx_K => {
+                match keyboard.get_first_key_down() {
+                    Some(_) => (),
+                    None => return,
+                }
+            },
             _ => (), 
         }
-        println!("{:#06x}, high: {:#04x}, low: {:#04x}", self.pc, first_byte, second_byte);
         self.emulate(opcode, &keyboard, screen);
-        // TODO match all jump/call instructions and do not increment
+        // match all jump/call instructions and do not increment the pc.
         match curr_instruction {
             Instruction::JP_addr => (),
+            Instruction::JP_V0 => (),
+            Instruction::CALL_addr => (),
             _ => self.pc += 2,
         }
     }
@@ -509,9 +536,7 @@ impl Emulator {
     fn ld_i_vx(&mut self, high_byte: u8) {
         // store registers V0..Vx in memory starting at memory[I]
         let sn = high_byte & 0x0F;
-        println!("sn: {}", sn);
         for i in 0..=sn as usize{
-            println!("index: {}", i);
             self.memory[self.address_register as usize + i] = self.registers[i];
         }
     }

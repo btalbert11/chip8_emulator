@@ -1,1 +1,4 @@
 /target
+# Ignore chip8 ROMS and translations
+*.ch8
+*.txt

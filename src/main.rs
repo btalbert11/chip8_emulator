@@ -1,5 +1,5 @@
 use chip8_emulator::emulator::Emulator;
-use chip8_emulator::keyboard::Keyboard;
+use chip8_emulator::keyboard::{Keyboard, Key};
 use chip8_emulator::instruction::Instruction;
 use chip8_emulator::screen::Screen;
 use std::{time::{ Duration, Instant}, process::exit, env, fs};
@@ -74,7 +74,6 @@ fn main() -> Result<(), Error>{
     };
 
 
-    let mut time_mark = Instant::now();
     event_loop.run(move |event, _, control_flow| {
         e.emulate_step(&k, &mut s);
 
@@ -100,16 +99,17 @@ fn main() -> Result<(), Error>{
                     return
                 }
             }
-        }
 
-        // let now = Instant::now();
-        // if let Some(time_passed) = now.checked_duration_since(time_mark) {
-        //     if time_passed.as_micros() > 16 {
-        //         println!("time passed = {}, redraw requested", time_passed.as_micros());
-        //         window.request_redraw();
-        //         time_mark = Instant::now();
-        //     }
-        // }
+            if input.key_pressed_os(VirtualKeyCode::Left) {
+                k.set_key(4, Key::Down);
+            }
+
+            if input.key_released(VirtualKeyCode::Left) {
+                k.set_key(4, Key::Up);
+            }
+        }
+        // TODO instead of redrawing the frame every loop, can either send a single from emulator when 
+        // a drw instrctuion is run, or just check the instruction in this loop
         window.request_redraw();
 
     });
