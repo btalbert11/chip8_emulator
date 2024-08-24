@@ -175,15 +175,24 @@ impl Emulator {
         let first_byte = self.memory[self.pc as usize];
         let second_byte = self.memory[(self.pc + 1) as usize];
         let opcode: u16 = ((first_byte as u16) << 8) | (second_byte as u16);
-        // println!("{:#04x}, {:#04x}, {:#04x}, {:#06x}", self.pc, first_byte, second_byte, opcode);
+        // TODO pause here for keyboard input opcode
+        let curr_instruction = Instruction::parse_opcode(opcode);
+        match curr_instruction {
+            Instruction::LD_Vx_K => todo!(),
+            _ => (), 
+        }
+        println!("{:#06x}, high: {:#04x}, low: {:#04x}", self.pc, first_byte, second_byte);
         self.emulate(opcode, &keyboard, screen);
-        self.pc += 2;
+        // TODO match all jump/call instructions and do not increment
+        match curr_instruction {
+            Instruction::JP_addr => (),
+            _ => self.pc += 2,
+        }
     }
 
     pub fn emulate(&mut self, opcode: u16, keyboard: &Keyboard, screen: &mut Screen) {
         let high_byte: u8 = ((opcode >> 8) & 0xFF) as u8;
         let low_byte: u8 = (opcode & 0xFF) as u8;
-        // println!("high: {:#04x}, low: {:#04x}", high_byte, low_byte);
 
         match Instruction::parse_opcode(opcode) {
             Instruction::SYS_addr => self.sys_addr(),

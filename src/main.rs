@@ -118,7 +118,6 @@ fn main() -> Result<(), Error>{
 }
 
 fn draw_pixels(pixels_buffer: &mut [u8], screen_buffer: &Vec<[u8; 4]>) {
-    println!("DRAW CALLED");
     for (pixel, cell) in pixels_buffer.chunks_exact_mut(4).zip(screen_buffer.iter()) {
         pixel.copy_from_slice(cell);
     }
