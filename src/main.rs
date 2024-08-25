@@ -14,6 +14,7 @@ use pixels::{Error, Pixels, SurfaceTexture};
 
 
 // TODO implement other screen sizes
+// TODO Fix all compiler warnings 
 const WIDTH: u32 = 64;
 const HEIGHT: u32 = 32;
 
