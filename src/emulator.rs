@@ -3,10 +3,10 @@ use rand::Rng;
 use crate::{
     instruction::Instruction, 
     screen::Screen,
-    keyboard::{Key, Keyboard},
+    keyboard::Keyboard,
 };
 
-use std::time::{Instant, Duration};
+use std::time::Instant;
 
 
 
@@ -21,8 +21,8 @@ pub struct Emulator {
     address_register: u16,
     memory: [u8; 0x1000],
     program_memory_index: usize,
-    display_refresh_memory_index: usize,
-    eti_660_memory_index: usize,
+    // display_refresh_memory_index: usize,
+    // eti_660_memory_index: usize,
     sprite_memory_index: usize,
     stack: [u16; 16],
     time_counter: Instant,
@@ -41,8 +41,8 @@ impl Emulator {
             address_register: 0,
             memory: [0; 0x1000],
             program_memory_index: 0x200,
-            display_refresh_memory_index: 0xF00,
-            eti_660_memory_index: 0x600,
+            // display_refresh_memory_index: 0xF00,
+            // eti_660_memory_index: 0x600,
             sprite_memory_index: 0x000,
             stack: [0; 16],
             time_counter: Instant::now(),
@@ -161,6 +161,10 @@ impl Emulator {
         count
     }
 
+    pub fn program_start_address(&self) -> usize {
+        self.program_memory_index
+    }
+
     pub fn set_memory(&mut self, byte: u8, mem_address: usize) {
         self.memory[mem_address] = byte;
     }
@@ -174,6 +178,9 @@ impl Emulator {
         }
     }
 
+    // Both delay and sound timer in the Chip8 decrement at a rate of 60Hz. Since nothing outside of the emulator
+    // reads these values, it is safe to check how much time has passed since last emulation step and decrement accordingly
+    // This is an impresise method but should be good enough for this project.
     fn decrement_counters(&mut self) {
         let delay = self.time_counter.elapsed().as_millis();
         if delay < 17 { return; }
@@ -196,7 +203,7 @@ impl Emulator {
         let first_byte = self.memory[self.pc as usize];
         let second_byte = self.memory[(self.pc + 1) as usize];
         let opcode: u16 = ((first_byte as u16) << 8) | (second_byte as u16);
-        println!("{:#06x}, high: {:#04x}, low: {:#04x}", self.pc, first_byte, second_byte);
+        // println!("{:#06x}, high: {:#04x}, low: {:#04x}", self.pc, first_byte, second_byte);
         let curr_instruction = Instruction::parse_opcode(opcode);
         match curr_instruction { // Can I just return here?
             Instruction::LD_Vx_K => {
@@ -447,11 +454,10 @@ impl Emulator {
 
     fn drw_vx_vy(&mut self, high_byte: u8, low_byte: u8, screen: &mut Screen) {
         // draw a sprite that is n bytes, from memory address I, starting at coordinates (Vx,Vy).
-        // If an on pixel is already set at any point in the sprite, it is set to off and VF is set.
-        // if the starting position is off the screen, it wraps around to the other side. This only happens
-        // for the starting pixel.
-        // TODO Find more references to make sure the wrapping is correct
+        // We XOR the sprite with the screen, so if an on pixel is already set at any point in the sprite, it is set to off and VF is set.
         // From my understanding the only way a pixel is set to off is by this collision.
+        // If a sprite goes off the screen, it will wrap around to the other side. I found conflicting information on the specifics of this,
+        // but my in implementation it will wrap part of a sprite.
         let second_nibble = high_byte & 0x0F;
         let third_nibble = (low_byte & 0xF0) >> 4;
         let last_nibble = low_byte & 0x0F;
@@ -459,7 +465,7 @@ impl Emulator {
         let x = self.registers[second_nibble as usize];
         let y = self.registers[third_nibble as usize];
         for (i, sprite_byte) in self.memory[(self.address_register as usize) .. (self.address_register + (last_nibble as u16)) as usize].iter().enumerate() {
-            if (screen.set_byte_pixels(*sprite_byte, x as u32, (y as u32) + (i as u32))) { flag_set = 1; }
+            if screen.set_byte_pixels(*sprite_byte, x as u32, (y as u32) + (i as u32)) { flag_set = 1; }
         }
         self.registers[self.flag_register_index] = flag_set; 
     }
@@ -527,7 +533,7 @@ impl Emulator {
         // take the decimal value of Vx, place the hundres digit in memory[I], tens in memory[I + 1], and ones in memory[I+2]
         let sn = high_byte & 0x0F;
         let value = self.registers[sn as usize];
-        self.memory[self.address_register as usize] = (value / 100);
+        self.memory[self.address_register as usize] = value / 100;
         self.memory[self.address_register as usize + 1] = (value % 100) / 10;
         self.memory[self.address_register as usize + 2] = value % 10;
     }
@@ -569,6 +575,7 @@ impl fmt::Debug for Emulator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::keyboard::Key;
 
     fn set_up(opcode: u16, instruction: Instruction) -> (Emulator, Keyboard) {
         assert_eq!(Instruction::parse_opcode(opcode), instruction);

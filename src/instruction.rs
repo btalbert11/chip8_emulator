@@ -1,7 +1,6 @@
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq)]
-
 pub enum Instruction {
     SYS_addr,
     CLS,
@@ -52,7 +51,7 @@ pub enum Instruction {
     Invalid_Instruction,
 }
 
-// #[allow(non_camel_case_types)] 
+// TODO add function to translate instructions into opcodes to allow for writing new programs
 impl Instruction {
     pub fn parse_opcode(opcode: u16) -> Instruction {
         let high_byte: u8 = ((opcode >> 8) & 0xFF) as u8;
@@ -114,13 +113,15 @@ impl Instruction {
 }
 
 
+// TODO write more tests cases for this
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn non_variable_instructions() {
-        //TODO
-        assert_eq!(1, 0)
+        let opcode = 0x00EE;
+        let i = Instruction::parse_opcode(opcode);
+        assert_eq!(i, Instruction::RET);
     }
 }

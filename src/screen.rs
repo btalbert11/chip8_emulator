@@ -26,7 +26,6 @@ impl Screen {
     pub fn set_pixel(&mut self, x: u32 , y: u32) -> bool {
         if x >= self.width || y >= self.height {
             panic!("TRYING TO SET PIXEL OUT OF SCREEN RANGE");
-            return false;
         }
         let pos = (y * self.width) + x;
         match self.screen[pos as usize] {
@@ -42,14 +41,15 @@ impl Screen {
     }
 
     // Take a byte and a starting (x, y) position and draw the pixels to the screen.
+    // If a sprite goes off screen, it is wrapped around to the other side.
     // Returns true if pixel overlap.
     pub fn set_byte_pixels(&mut self, byte: u8, x: u32, y: u32) -> bool {
         let mut overlap: bool = false;
         for i in 0..8 {
             // if bit is 1, set pixel. 
             // if overlap from setting pixel, set overlap to true
-            if(((byte << i) & 0x80) == 0x80) {
-                if (self.set_pixel((x + i) % self.width, y % self.height)) {
+            if ((byte << i) & 0x80) == 0x80 {
+                if self.set_pixel((x + i) % self.width, y % self.height) {
                     overlap = true;
                 }
             }
@@ -62,7 +62,6 @@ impl Screen {
     }
 
     pub fn screen_to_render(&self) -> Vec<[u8; 4]> {
-        let c = self.color;
         self.screen.iter().map(|item| {
             match item {
                 PixelSet::PixelOn => self.color,
@@ -116,6 +115,7 @@ mod tests {
         s.clear_screen();
         let output = s.screen_to_render();
         let comparison: Vec<[u8; 4]> = vec![[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+        assert_eq!(output, comparison);
     }
 
     #[test]

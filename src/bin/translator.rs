@@ -9,7 +9,7 @@ fn translate_instruction(pc: u16, first_byte: u8, second_byte: u8) -> Option<Str
     let fourth_nibble = second_byte & 0x0F;
     let s = String::from(format!("{:#06x}: ", pc));
     match Instruction::parse_opcode(opcode) {
-        Instruction::SYS_addr => Some(format!("{}SYS_addr, {}", s, opcode & 0x0FFF)),
+        Instruction::SYS_addr => Some(format!("{}SYS_addr, {:#06x}", s, opcode & 0x0FFF)),
         Instruction::CLS => Some(format!("{}CLS", s)),
         Instruction::RET => Some(format!("{}RET", s)),
         Instruction::JP_addr => Some(format!("{}JP_addr, {:#06x}", s, opcode & 0x0FFF)),
@@ -39,11 +39,11 @@ fn translate_instruction(pc: u16, first_byte: u8, second_byte: u8) -> Option<Str
         Instruction::LD_Vx_K => Some(format!("{}", s)),
         Instruction::LD_DT_Vx => Some(format!("{}LD_DT_Vx, V{}", s, sn)),
         Instruction::LD_ST_Vx => Some(format!("{}LD_ST_Vx, V{}", s, sn)),
-        Instruction::ADD_I_Vx => Some(format!("{}", s)),
-        Instruction::LD_F_Vx => Some(format!("{}", s)),
-        Instruction::LD_B_Vx => Some(format!("{}", s)),
-        Instruction::LD_I_Vx => Some(format!("{}", s)),
-        Instruction::LD_Vx_I => Some(format!("{}", s)),
+        Instruction::ADD_I_Vx => Some(format!("{}ADD_I_Vx, V{}", s, sn)),
+        Instruction::LD_F_Vx => Some(format!("{}LD_F_Vx, V{}", s, sn)),
+        Instruction::LD_B_Vx => Some(format!("{}LD_B_Vx, V{}", s, sn)),
+        Instruction::LD_I_Vx => Some(format!("{}LD_I_Vx, V{}", s, sn)),
+        Instruction::LD_Vx_I => Some(format!("{}LD_Vx_I, V{}", s, sn)),
         Instruction::SCD_nibble => Some(format!("{}", s)),
         Instruction::SCR => Some(format!("{}", s)),
         Instruction::SCL => Some(format!("{}", s)),
@@ -59,8 +59,6 @@ fn translate_instruction(pc: u16, first_byte: u8, second_byte: u8) -> Option<Str
 }
 
 fn main() {
-
-    println!("{}", std::env::current_dir().unwrap().display());
 
     let args: Vec<String> = env::args().collect();
     dbg!(&args);
@@ -85,7 +83,9 @@ fn main() {
 
             if let Some(mut instrution_string) = translate_instruction(pc, *first_byte, *second_byte) {
                 instrution_string.push('\n');
-                destination.write(instrution_string.as_bytes());
+                if let Err(e) = destination.write(instrution_string.as_bytes()) {
+                    panic!("Error {} when attempting to write to file, closing ...", e);
+                }
                 pc += 2;
             }
             else {
