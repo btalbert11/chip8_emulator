@@ -1,33 +1,28 @@
 use chip8_emulator::emulator::Emulator;
-use chip8_emulator::keyboard::{Keyboard, Key};
+use chip8_emulator::keyboard::{Key, Keyboard};
 use chip8_emulator::screen::Screen;
-use std::{process::exit, env, fs};
+use pixels::{Error, Pixels, SurfaceTexture};
+use std::{env, fs, process::exit};
 use winit::{
     dpi::LogicalSize,
     event::{Event, VirtualKeyCode},
-    event_loop::{EventLoop, ControlFlow},
+    event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 use winit_input_helper::WinitInputHelper;
-use pixels::{Error, Pixels, SurfaceTexture};
-
 
 // TODO implement other screen sizes for different chip8 instruction sets
 const WIDTH: u32 = 64;
 const HEIGHT: u32 = 32;
 
 fn load_rom(filename: &str, e: &mut Emulator) {
-    let contents = fs::read(filename)
-        .expect("Rom file not found.");
+    let contents = fs::read(filename).expect("Rom file not found.");
     for i in 0..contents.len() {
         e.set_memory(contents[i], i + e.program_start_address());
     }
-
 }
 
-
-
-fn main() -> Result<(), Error>{
+fn main() -> Result<(), Error> {
     env_logger::init();
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
@@ -40,7 +35,6 @@ fn main() -> Result<(), Error>{
     let mut s = Screen::new(WIDTH, HEIGHT);
     load_rom(&args[1], &mut e);
 
-
     let event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
 
@@ -51,7 +45,8 @@ fn main() -> Result<(), Error>{
             .with_title("Chip8")
             .with_inner_size(scaled_size)
             .with_min_inner_size(size)
-            .build(&event_loop).unwrap()
+            .build(&event_loop)
+            .unwrap()
     };
 
     let mut pixels = {
@@ -59,7 +54,6 @@ fn main() -> Result<(), Error>{
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
         Pixels::new(WIDTH as u32, HEIGHT as u32, surface_texture)?
     };
-
 
     event_loop.run(move |event, _, control_flow| {
         e.emulate_step(&k, &mut s);
@@ -69,24 +63,23 @@ fn main() -> Result<(), Error>{
             if let Err(err) = pixels.render() {
                 println!("PIXEL DRAW ERROR: {}", err);
                 *control_flow = ControlFlow::Exit;
-                return
+                return;
             }
         }
 
         if input.update(&event) {
             if input.key_pressed(VirtualKeyCode::Escape) || input.close_requested() {
                 *control_flow = ControlFlow::Exit;
-                return
+                return;
             }
 
             if let Some(size) = input.window_resized() {
                 if let Err(err) = pixels.resize_surface(size.width, size.height) {
                     println!("PIXEL RESIZE ERROR: {}", err);
                     *control_flow = ControlFlow::Exit;
-                    return
+                    return;
                 }
             }
-
 
             // TODO Add an option to change keybindings on start up. Can save in a config file
             // and load that file on startup
@@ -218,10 +211,9 @@ fn main() -> Result<(), Error>{
                 k.set_key(15, Key::Up);
             }
         }
-        // TODO instead of redrawing the frame every loop, can either send a signal from emulator when 
+        // TODO instead of redrawing the frame every loop, can either send a signal from emulator when
         // a drw instrctuion is run, or just check the instruction in this loop
         window.request_redraw();
-
     });
 }
 

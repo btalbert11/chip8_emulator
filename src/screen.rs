@@ -1,7 +1,7 @@
 #[derive(Debug, Clone)]
 enum PixelSet {
     PixelOn,
-    PixelOff
+    PixelOff,
 }
 
 #[derive(Debug)]
@@ -9,7 +9,7 @@ pub struct Screen {
     width: u32,
     height: u32,
     color: [u8; 4],
-    screen: Vec<PixelSet> // pixels is a flat array, with 4 values for color
+    screen: Vec<PixelSet>, // pixels is a flat array, with 4 values for color
 }
 
 impl Screen {
@@ -23,7 +23,7 @@ impl Screen {
     }
 
     // returns true if pixel overlaps
-    pub fn set_pixel(&mut self, x: u32 , y: u32) -> bool {
+    pub fn set_pixel(&mut self, x: u32, y: u32) -> bool {
         if x >= self.width || y >= self.height {
             panic!("TRYING TO SET PIXEL OUT OF SCREEN RANGE");
         }
@@ -32,7 +32,7 @@ impl Screen {
             PixelSet::PixelOff => {
                 self.screen[pos as usize] = PixelSet::PixelOn;
                 return false;
-            },
+            }
             PixelSet::PixelOn => {
                 self.screen[pos as usize] = PixelSet::PixelOff;
                 return true;
@@ -46,7 +46,7 @@ impl Screen {
     pub fn set_byte_pixels(&mut self, byte: u8, x: u32, y: u32) -> bool {
         let mut overlap: bool = false;
         for i in 0..8 {
-            // if bit is 1, set pixel. 
+            // if bit is 1, set pixel.
             // if overlap from setting pixel, set overlap to true
             if ((byte << i) & 0x80) == 0x80 {
                 if self.set_pixel((x + i) % self.width, y % self.height) {
@@ -58,16 +58,19 @@ impl Screen {
     }
 
     pub fn clear_screen(&mut self) {
-        self.screen.iter_mut().for_each(|item| *item = PixelSet::PixelOff);
+        self.screen
+            .iter_mut()
+            .for_each(|item| *item = PixelSet::PixelOff);
     }
 
     pub fn screen_to_render(&self) -> Vec<[u8; 4]> {
-        self.screen.iter().map(|item| {
-            match item {
+        self.screen
+            .iter()
+            .map(|item| match item {
                 PixelSet::PixelOn => self.color,
-                PixelSet::PixelOff => [0, 0, 0, 0]
-            }
-        }).collect()
+                PixelSet::PixelOff => [0, 0, 0, 0],
+            })
+            .collect()
     }
 }
 
@@ -85,7 +88,6 @@ mod tests {
         assert_eq!(output, comparison);
     }
 
-
     #[test]
     fn render_screen() {
         let mut s = Screen::new(8, 8);
@@ -96,7 +98,7 @@ mod tests {
         s.screen[10] = PixelSet::PixelOn;
 
         let output = s.screen_to_render();
-        let mut comparison: Vec<[u8; 4]> = vec![z; 8*8];
+        let mut comparison: Vec<[u8; 4]> = vec![z; 8 * 8];
         comparison[0] = c;
         comparison[9] = c;
         comparison[10] = c;

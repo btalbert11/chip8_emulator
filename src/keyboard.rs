@@ -1,18 +1,17 @@
-
 #[derive(Copy, Clone, Debug)]
 pub enum Key {
     Up,
-    Down
+    Down,
 }
 
 pub struct Keyboard {
-    keys: [Key; 16]
+    keys: [Key; 16],
 }
 
 impl Keyboard {
     pub fn new() -> Keyboard {
         Keyboard {
-            keys: [Key::Up; 16]
+            keys: [Key::Up; 16],
         }
     }
 
@@ -27,7 +26,7 @@ impl Keyboard {
         for (i, key) in self.keys.iter().enumerate() {
             match key {
                 Key::Down => return Some(i as u8),
-                _ => ()
+                _ => (),
             }
         }
         None
@@ -39,4 +38,4 @@ impl Keyboard {
         }
         self.keys[index as usize] = state;
     }
- }
+}

@@ -1,15 +1,8 @@
-use std::fmt;
+use crate::{instruction::Instruction, keyboard::Keyboard, screen::Screen};
 use rand::Rng;
-use crate::{
-    instruction::Instruction, 
-    screen::Screen,
-    keyboard::Keyboard,
-};
+use std::fmt;
 
 use std::time::Instant;
-
-
-
 
 pub struct Emulator {
     registers: [u8; 16],
@@ -27,7 +20,6 @@ pub struct Emulator {
     stack: [u16; 16],
     time_counter: Instant,
 }
-
 
 impl Emulator {
     pub fn new() -> Emulator {
@@ -95,7 +87,7 @@ impl Emulator {
         self.memory[self.sprite_memory_index + 32] = 0xF0;
         self.memory[self.sprite_memory_index + 33] = 0x90;
         self.memory[self.sprite_memory_index + 34] = 0xF0;
-        // 7 
+        // 7
         self.memory[self.sprite_memory_index + 35] = 0xF0;
         self.memory[self.sprite_memory_index + 36] = 0x10;
         self.memory[self.sprite_memory_index + 37] = 0x20;
@@ -170,10 +162,10 @@ impl Emulator {
     }
 
     pub fn print_memory(&self) {
-        for i in (0..0xFFF).step_by(16){
+        for i in (0..0xFFF).step_by(16) {
             println!("{:#05x}: {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x},",
-                i, self.memory[i], self.memory[i+1], self.memory[i+2], self.memory[i+3], self.memory[i+4], self.memory[i+5], self.memory[i+6], 
-                self.memory[i+7], self.memory[i+8], self.memory[i+9], self.memory[i+10], self.memory[i+11], self.memory[i+12], self.memory[i+13], 
+                i, self.memory[i], self.memory[i+1], self.memory[i+2], self.memory[i+3], self.memory[i+4], self.memory[i+5], self.memory[i+6],
+                self.memory[i+7], self.memory[i+8], self.memory[i+9], self.memory[i+10], self.memory[i+11], self.memory[i+12], self.memory[i+13],
                 self.memory[i+14], self.memory[i+15]);
         }
     }
@@ -183,14 +175,22 @@ impl Emulator {
     // This is an impresise method but should be good enough for this project.
     fn decrement_counters(&mut self) {
         let delay = self.time_counter.elapsed().as_millis();
-        if delay < 17 { return; }
+        if delay < 17 {
+            return;
+        }
         if self.delay_timer_register > 0 {
-            if delay >= self.delay_timer_register.into() { self.delay_timer_register = 0; }
-            else {self.delay_timer_register -= (delay / 17) as u8; }
+            if delay >= self.delay_timer_register.into() {
+                self.delay_timer_register = 0;
+            } else {
+                self.delay_timer_register -= (delay / 17) as u8;
+            }
         }
         if self.sound_timer_register > 0 {
-            if delay >= self.sound_timer_register.into() { self.sound_timer_register = 0; }
-            else { self.sound_timer_register -= (delay / 17) as u8; }
+            if delay >= self.sound_timer_register.into() {
+                self.sound_timer_register = 0;
+            } else {
+                self.sound_timer_register -= (delay / 17) as u8;
+            }
         }
 
         self.time_counter = Instant::now();
@@ -205,14 +205,13 @@ impl Emulator {
         let opcode: u16 = ((first_byte as u16) << 8) | (second_byte as u16);
         // println!("{:#06x}, high: {:#04x}, low: {:#04x}", self.pc, first_byte, second_byte);
         let curr_instruction = Instruction::parse_opcode(opcode);
-        match curr_instruction { // Can I just return here?
-            Instruction::LD_Vx_K => {
-                match keyboard.get_first_key_down() {
-                    Some(_) => (),
-                    None => return,
-                }
+        match curr_instruction {
+            // Can I just return here?
+            Instruction::LD_Vx_K => match keyboard.get_first_key_down() {
+                Some(_) => (),
+                None => return,
             },
-            _ => (), 
+            _ => (),
         }
         self.emulate(opcode, &keyboard, screen);
         // match all jump/call instructions and do not increment the pc.
@@ -280,14 +279,14 @@ impl Emulator {
 
     fn sys_addr(&mut self) {
         // This instruction is ignored in modern emulators
-        return
+        return;
     }
 
-    fn cls (&self, screen: &mut Screen) {
+    fn cls(&self, screen: &mut Screen) {
         screen.clear_screen();
     }
 
-    fn ret (&mut self) {
+    fn ret(&mut self) {
         // return from a subroutine
         self.pc = self.stack[self.sp as usize];
         self.sp -= 1;
@@ -339,7 +338,8 @@ impl Emulator {
     fn add_vx(&mut self, high_byte: u8, low_byte: u8) {
         // Add kk to Vx and store in Vx
         let second_nibble = high_byte & 0x0F;
-        self.registers[second_nibble as usize] = self.registers[second_nibble as usize].wrapping_add(low_byte);
+        self.registers[second_nibble as usize] =
+            self.registers[second_nibble as usize].wrapping_add(low_byte);
     }
 
     fn ld_vx_vy(&mut self, high_byte: u8, low_byte: u8) {
@@ -353,21 +353,24 @@ impl Emulator {
         // set Vx to Vx OR Vy
         let second_nibble = high_byte & 0x0F;
         let third_nibble = (low_byte & 0xF0) >> 4;
-        self.registers[second_nibble as usize] = self.registers[second_nibble as usize] | self.registers[third_nibble as usize]; 
+        self.registers[second_nibble as usize] =
+            self.registers[second_nibble as usize] | self.registers[third_nibble as usize];
     }
 
     fn and_vx_vy(&mut self, high_byte: u8, low_byte: u8) {
         // set Vx to Vx AND Vy
         let second_nibble = high_byte & 0x0F;
         let third_nibble = (low_byte & 0xF0) >> 4;
-        self.registers[second_nibble as usize] = self.registers[second_nibble as usize] & self.registers[third_nibble as usize]; 
+        self.registers[second_nibble as usize] =
+            self.registers[second_nibble as usize] & self.registers[third_nibble as usize];
     }
 
     fn xor_vx_vy(&mut self, high_byte: u8, low_byte: u8) {
         // set Vx to Vx XOR Vy
         let second_nibble = high_byte & 0x0F;
         let third_nibble = (low_byte & 0xF0) >> 4;
-        self.registers[second_nibble as usize] = self.registers[second_nibble as usize] ^ self.registers[third_nibble as usize];
+        self.registers[second_nibble as usize] =
+            self.registers[second_nibble as usize] ^ self.registers[third_nibble as usize];
     }
 
     fn add_vx_vy(&mut self, high_byte: u8, low_byte: u8) {
@@ -375,27 +378,30 @@ impl Emulator {
         // I can't find what "lowest 8 bits kept" means, so I am assuming its a normal overflow
         let second_nibble = high_byte & 0x0F;
         let third_nibble = (low_byte & 0xF0) >> 4;
-        let result: u16 = (self.registers[second_nibble as usize] as u16) + (self.registers[third_nibble as usize] as u16);
+        let result: u16 = (self.registers[second_nibble as usize] as u16)
+            + (self.registers[third_nibble as usize] as u16);
         // set carry flag
-        if result > 255 { 
+        if result > 255 {
             self.registers[self.flag_register_index as usize] = 1;
         } else {
             self.registers[self.flag_register_index as usize] = 0;
         }
-        self.registers[second_nibble as usize] = self.registers[second_nibble as usize].wrapping_add(self.registers[third_nibble as usize]);
+        self.registers[second_nibble as usize] = self.registers[second_nibble as usize]
+            .wrapping_add(self.registers[third_nibble as usize]);
     }
 
     fn sub_vx_vy(&mut self, high_byte: u8, low_byte: u8) {
         // set Vx = Vx - Vy. If underflow (Vy > Vx), set Vf to 0 else 1.
         let second_nibble = high_byte & 0x0F;
-        let third_nibble = (low_byte &0xF0) >> 4;
+        let third_nibble = (low_byte & 0xF0) >> 4;
         // No underflow
         if self.registers[second_nibble as usize] > self.registers[third_nibble as usize] {
             self.registers[self.flag_register_index as usize] = 1;
         } else {
             self.registers[self.flag_register_index as usize] = 0;
         }
-        self.registers[second_nibble as usize] = self.registers[second_nibble as usize].wrapping_sub(self.registers[third_nibble as usize]);
+        self.registers[second_nibble as usize] = self.registers[second_nibble as usize]
+            .wrapping_sub(self.registers[third_nibble as usize]);
     }
 
     fn shr_vx(&mut self, high_byte: u8) {
@@ -415,13 +421,15 @@ impl Emulator {
         } else {
             self.registers[self.flag_register_index] = 0;
         }
-        self.registers[second_nibble as usize] = self.registers[third_nibble as usize].wrapping_sub(self.registers[second_nibble as usize]);
+        self.registers[second_nibble as usize] = self.registers[third_nibble as usize]
+            .wrapping_sub(self.registers[second_nibble as usize]);
     }
 
     fn shl_vx(&mut self, high_byte: u8) {
         // set Vf to most significant bit of Vx, then shift Vx left 1
         let second_nibble = high_byte & 0x0F;
-        self.registers[self.flag_register_index] = (self.registers[second_nibble as usize] & 0x80) >> 7;
+        self.registers[self.flag_register_index] =
+            (self.registers[second_nibble as usize] & 0x80) >> 7;
         self.registers[second_nibble as usize] = self.registers[second_nibble as usize] << 1;
     }
 
@@ -464,10 +472,16 @@ impl Emulator {
         let mut flag_set: u8 = 0;
         let x = self.registers[second_nibble as usize];
         let y = self.registers[third_nibble as usize];
-        for (i, sprite_byte) in self.memory[(self.address_register as usize) .. (self.address_register + (last_nibble as u16)) as usize].iter().enumerate() {
-            if screen.set_byte_pixels(*sprite_byte, x as u32, (y as u32) + (i as u32)) { flag_set = 1; }
+        for (i, sprite_byte) in self.memory[(self.address_register as usize)
+            ..(self.address_register + (last_nibble as u16)) as usize]
+            .iter()
+            .enumerate()
+        {
+            if screen.set_byte_pixels(*sprite_byte, x as u32, (y as u32) + (i as u32)) {
+                flag_set = 1;
+            }
         }
-        self.registers[self.flag_register_index] = flag_set; 
+        self.registers[self.flag_register_index] = flag_set;
     }
 
     fn skp_vx(&mut self, high_byte: u8, keyboard: &Keyboard) {
@@ -498,7 +512,9 @@ impl Emulator {
         let sn = high_byte & 0x0F;
         self.registers[sn as usize] = match keyboard.get_first_key_down() {
             Some(i) => i,
-            None => panic!("Keyboard had no keys down, execution should have paused prior to function call.")
+            None => panic!(
+                "Keyboard had no keys down, execution should have paused prior to function call."
+            ),
         }
     }
 
@@ -517,16 +533,19 @@ impl Emulator {
     fn add_i_vx(&mut self, high_byte: u8) {
         // I = I + Vx
         let sn = high_byte & 0x0F;
-        self.address_register = self.address_register.wrapping_add(self.registers[sn as usize] as u16);
+        self.address_register = self
+            .address_register
+            .wrapping_add(self.registers[sn as usize] as u16);
     }
 
     fn ld_f_vx(&mut self, high_byte: u8) {
-        // This gets the hexidecimal digits that are stored in the 
+        // This gets the hexidecimal digits that are stored in the
         // begginning section of memory (first 512 bytes).
         // I think these can be stored in an arbitary location, but I'm not sure.
         // I = sprite_mem_index
         let sn = high_byte & 0x0F;
-        self.address_register = self.sprite_memory_index as u16 + (5 * self.registers[sn as usize] as u16);
+        self.address_register =
+            self.sprite_memory_index as u16 + (5 * self.registers[sn as usize] as u16);
     }
 
     fn ld_b_vx(&mut self, high_byte: u8) {
@@ -541,14 +560,14 @@ impl Emulator {
     fn ld_i_vx(&mut self, high_byte: u8) {
         // store registers V0..Vx in memory starting at memory[I]
         let sn = high_byte & 0x0F;
-        for i in 0..=sn as usize{
+        for i in 0..=sn as usize {
             self.memory[self.address_register as usize + i] = self.registers[i];
         }
     }
 
     fn ld_vx_i(&mut self, high_byte: u8) {
         // read values from memory[I..I+x] into register V0..Vx
-        let sn = high_byte & 0x0F; 
+        let sn = high_byte & 0x0F;
         for i in 0..=sn as usize {
             self.registers[i] = self.memory[self.address_register as usize + i];
         }
@@ -558,19 +577,15 @@ impl Emulator {
         println!("Missing opcode! {:#06x} \n{:?}", opcode, *self);
         panic!();
     }
-
-
 }
 impl fmt::Debug for Emulator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let nonzero_memory = self.get_nonzero_memory();
         write!(f, "Emulator: registers: {:?}, pc: {}, sp: {}, delay_timer_register: {}, sound_timer_register: {}, address_register{}, non-zero memory values: {}, stack: {:?}", 
-        self.registers, self.pc, self.sp, self.delay_timer_register, self.sound_timer_register, 
+        self.registers, self.pc, self.sp, self.delay_timer_register, self.sound_timer_register,
         self.address_register, nonzero_memory, self.stack)
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -583,7 +598,6 @@ mod tests {
         let k = Keyboard::new();
         (e, k)
     }
-
 
     // This function is just so I dont have to rewrite all my tests. Yes I know its bad
     fn no_screen_test(opcode: u16, e: &mut Emulator, k: &Keyboard) {
@@ -610,12 +624,12 @@ mod tests {
         let c: [u8; 4] = [0xFF, 0xFF, 0xFF, 0xFF];
         let z = [0, 0, 0, 0];
         let comparison = vec![z, z, c, c];
-        assert_eq!(output, comparison);   
+        assert_eq!(output, comparison);
         e.emulate(opcode, &k, &mut s);
 
         let output = s.screen_to_render();
         let comparison: Vec<[u8; 4]> = vec![z, z, z, z];
-        assert_eq!(output, comparison);   
+        assert_eq!(output, comparison);
     }
 
     #[test]
@@ -669,7 +683,7 @@ mod tests {
         e.registers[1] = 0xF1;
         e.registers[2] = 0xF1;
         no_screen_test(opcode, &mut e, &k);
-        assert_eq!(e.pc, (e.program_memory_index + 2)as u16);
+        assert_eq!(e.pc, (e.program_memory_index + 2) as u16);
         e.registers[2] = 0xFF;
         no_screen_test(0x5120, &mut e, &k);
         assert_eq!(e.pc, (e.program_memory_index + 2) as u16);
@@ -682,7 +696,7 @@ mod tests {
         no_screen_test(opcode, &mut e, &k);
         assert_eq!(e.registers[1], 0x23);
     }
-    
+
     #[test]
     fn add_vx() {
         let opcode: u16 = 0x7123;
@@ -762,7 +776,6 @@ mod tests {
         assert_eq!(e.registers[e.flag_register_index], 0);
     }
 
-
     #[test]
     fn shr_vx() {
         let opcode: u16 = 0x8126;
@@ -816,7 +829,7 @@ mod tests {
         assert_eq!(e.pc, e.program_memory_index as u16);
         e.registers[2] = 0xFF;
         no_screen_test(opcode, &mut e, &k);
-        assert_eq!(e.pc,(e.program_memory_index as u16) + 2);
+        assert_eq!(e.pc, (e.program_memory_index as u16) + 2);
     }
 
     #[test]
@@ -871,14 +884,9 @@ mod tests {
         let c: [u8; 4] = [0xFF, 0xFF, 0xFF, 0xFF];
         let z: [u8; 4] = [0, 0, 0, 0];
         let comparison: Vec<[u8; 4]> = vec![
-            z, z, z, z, z, z, z, z,
-            z, z, z, z, z, z, z, z,
-            z, z, z, z, z, z, z, z,
-            c, c, c, c, c, c, c, c,
-            z, z, z, z, z, z, z, z,
-            c, c, c, c, c, c, c, c,
-            z, z, z, z, z, z, z, z,
-            c, c, c, c, c, c, c, c,
+            z, z, z, z, z, z, z, z, z, z, z, z, z, z, z, z, z, z, z, z, z, z, z, z, c, c, c, c, c,
+            c, c, c, z, z, z, z, z, z, z, z, c, c, c, c, c, c, c, c, z, z, z, z, z, z, z, z, c, c,
+            c, c, c, c, c, c,
         ];
 
         assert_eq!(output, comparison);
@@ -916,7 +924,6 @@ mod tests {
         assert_eq!(e.pc, (e.program_memory_index as u16) + 4);
     }
 
-    
     #[test]
     fn ld_vx_dt() {
         let opcode: u16 = 0xF107;
@@ -1013,7 +1020,6 @@ mod tests {
         assert_eq!(e.memory[e.address_register as usize], 0);
         assert_eq!(e.memory[e.address_register as usize + 1], 0);
         assert_eq!(e.memory[e.address_register as usize + 2], 2);
-
     }
 
     #[test]
@@ -1053,8 +1059,6 @@ mod tests {
         assert_eq!(e.memory[e.address_register as usize + 12], 0xBB);
         assert_eq!(e.memory[e.address_register as usize + 13], 0xBB);
         assert_eq!(e.memory[e.address_register as usize + 14], 0xBB);
-
-
     }
 
     #[test]
@@ -1093,6 +1097,5 @@ mod tests {
         assert_eq!(e.registers[12], 0x45);
         assert_eq!(e.registers[13], 0x35);
         assert_eq!(e.registers[14], 0x34);
-
     }
 }
