@@ -7,19 +7,22 @@ use winit::{
     dpi::LogicalSize,
     event::*,
     event_loop::{ControlFlow, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
     window::{WindowBuilder, Window},
 };
-use winit_input_helper::WinitInputHelper;
+// use winit_input_helper::WinitInputHelper;
 #[cfg(target_arch = "wasm32")]
 use web_sys::console;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsValue;
-
 
 pub mod emulator;
 pub mod instruction;
 pub mod keyboard;
 pub mod screen;
+pub mod wgpu_state;
 
 
 fn draw_pixels(pixels_buffer: &mut [u8], screen_buffer: &Vec<[u8; 4]>) {
@@ -32,16 +35,28 @@ fn draw_pixels(pixels_buffer: &mut [u8], screen_buffer: &Vec<[u8; 4]>) {
 const WIDTH: u32 = 64;
 const HEIGHT: u32 = 32;
 
-fn load_rom(filename: &str, e: &mut Emulator) {
-    let contents = fs::read(filename).expect("Rom file not found.");
-    for i in 0..contents.len() {
-        e.set_memory(contents[i], i + e.program_start_address());
+const BREAKOUT_ROM: &[u8] = include_bytes!("../Breakout.ch8");
+
+fn load_rom(contents: Option<Vec<u8>>, filename: Option<&str>, e: &mut Emulator) {
+    let mut c: Vec<u8>;
+    if let Some(f) = filename {
+        c = fs::read(f).expect("Rom file not found.");
+    }
+    else if let Some(con) = contents {
+        c = con;
+    }
+    else {
+        panic!("No Rom provided");
+    }
+
+    for i in 0..c.len() {
+        e.set_memory(c[i], i + e.program_start_address());
     }
 }
 
 // TODO move this to lib file to make it work on web maybe?
 #[cfg_attr(target_arch="wasm32", wasm_bindgen(start))]
-pub fn run() -> Result<(), JsValue>{
+pub fn run() {
 
     #[cfg(target_arch = "wasm32")]
     console::log_1(&"Hello".into());
@@ -59,8 +74,14 @@ pub fn run() -> Result<(), JsValue>{
     let args: Vec<String> = env::args().collect();
     let mut filename: String = String::new();
 
+
+    let mut e = Emulator::new();
+    let mut k = Keyboard::new();
+    let mut s = Screen::new(WIDTH, HEIGHT);
+
+
     #[cfg(target_arch = "wasm32")] {
-        filename = String::from("maze.ch8");
+        load_rom(Some(BREAKOUT_ROM.to_vec()), None, &mut e);
     }
     #[cfg(not(target_arch = "wasm32"))]
     { 
@@ -69,19 +90,16 @@ pub fn run() -> Result<(), JsValue>{
             exit(-1);
         } else {
             filename = String::from(&args[1]);
+            load_rom(None, Some(&filename), &mut e);
         }
     }
 
     #[cfg(target_arch = "wasm32")]
     console::log_1(&filename.into());
 
-    let mut e = Emulator::new();
-    let mut k = Keyboard::new();
-    let mut s = Screen::new(WIDTH, HEIGHT);
-    load_rom(&filename, &mut e);
 
-    let event_loop = EventLoop::new();
-    let mut input = WinitInputHelper::new();
+    let event_loop = EventLoop::new().unwrap();
+    // let mut input = WinitInputHelper::new();
 
     let window = {
         let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
@@ -105,7 +123,7 @@ pub fn run() -> Result<(), JsValue>{
     web_sys::window()
         .and_then(|win| win.document())
         .and_then(|doc| {
-            let dst = doc.get_element_by_id("wasm-example")?;
+            let dst = doc.get_element_by_id("chip8-emulator")?;
             let canvas = web_sys::Element::from(window.canvas()?);
             dst.append_child(&canvas).ok()?;
             Some(())
@@ -123,162 +141,188 @@ pub fn run() -> Result<(), JsValue>{
         }
     };
 
-    event_loop.run(move |event, _, control_flow| {
+    let _ = event_loop.run(move |event, control_flow| {
         e.emulate_step(&k, &mut s);
 
-        if let Event::RedrawRequested(_) = event {
-            draw_pixels(pixels.frame_mut(), &s.screen_to_render());
-            if let Err(err) = pixels.render() {
-                println!("PIXEL DRAW ERROR: {}", err);
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
-        }
-
-        if input.update(&event) {
-            if input.key_pressed(VirtualKeyCode::Escape) || input.close_requested() {
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
-
-            if let Some(size) = input.window_resized() {
-                if let Err(err) = pixels.resize_surface(size.width, size.height) {
-                    println!("PIXEL RESIZE ERROR: {}", err);
-                    *control_flow = ControlFlow::Exit;
-                    return;
+        match event {
+            Event::WindowEvent { 
+                window_id, 
+                ref event 
+            } if window_id == window.id() => {
+                match event {
+                    // window management
+                    WindowEvent::CloseRequested | WindowEvent::KeyboardInput { 
+                        event: KeyEvent {state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::Escape), ..},
+                        ..
+                    } => control_flow.exit(),
+                    WindowEvent::RedrawRequested if window_id == window.id() => {
+                        draw_pixels(pixels.frame_mut(), &s.screen_to_render());
+                        if let Err(err) = pixels.render() {
+                            println!("PIXEL DRAW ERROR: {}", err);
+                            control_flow.exit();
+                            return;
+                        }
+                    },
+                    WindowEvent::Resized(physical_size) => {
+                        if let Err(err) = pixels.resize_surface(physical_size.width, physical_size.height) {
+                            println!("PIXEL RESIZE ERROR: {}", err);
+                            control_flow.exit();
+                            return;
+                        }
+                    },
+                    // player input management
+                    // Left
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::ArrowLeft), ..},
+                        .. 
+                    } => k.set_key(4, Key::Down),
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(KeyCode::ArrowLeft), ..},
+                        .. 
+                    } => k.set_key(4, Key::Up),
+                    // Right
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::ArrowRight), ..},
+                        .. 
+                    } => k.set_key(6, Key::Down),
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(KeyCode::ArrowRight), ..},
+                        .. 
+                    } => k.set_key(6, Key::Up),
+                    // Down
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::ArrowDown), ..},
+                        .. 
+                    } => k.set_key(8, Key::Down),
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(KeyCode::ArrowDown), ..},
+                        .. 
+                    } => k.set_key(8, Key::Up),
+                    // Up
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::ArrowUp), ..},
+                        .. 
+                    } => k.set_key(2, Key::Down),
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(KeyCode::ArrowUp), ..},
+                        .. 
+                    } => k.set_key(2, Key::Up),
+                    
+                    
+                    _ => (),
                 }
             }
-
-            // TODO Add an option to change keybindings on start up. Can save in a config file
-            // and load that file on startup
-            if input.key_pressed(VirtualKeyCode::Numpad7) {
-                k.set_key(1, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::Numpad7) {
-                k.set_key(1, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::Up) {
-                k.set_key(2, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::Down) {
-                k.set_key(2, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::Numpad3) {
-                k.set_key(3, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::Numpad3) {
-                k.set_key(3, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::Left) {
-                k.set_key(4, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::Left) {
-                k.set_key(4, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::Numpad5) {
-                k.set_key(5, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::Numpad5) {
-                k.set_key(5, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::Right) {
-                k.set_key(6, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::Right) {
-                k.set_key(6, Key::Up)
-            }
-
-            if input.key_pressed(VirtualKeyCode::Numpad1) {
-                k.set_key(7, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::Numpad1) {
-                k.set_key(7, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::Down) {
-                k.set_key(8, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::Down) {
-                k.set_key(8, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::Numpad3) {
-                k.set_key(9, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::Numpad3) {
-                k.set_key(9, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::Numpad0) {
-                k.set_key(0, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::Numpad0) {
-                k.set_key(0, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::A) {
-                k.set_key(10, Key::Down);
-            }
-
-            if input.key_pressed(VirtualKeyCode::A) {
-                k.set_key(10, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::B) {
-                k.set_key(11, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::B) {
-                k.set_key(11, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::C) {
-                k.set_key(12, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::C) {
-                k.set_key(12, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::D) {
-                k.set_key(13, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::D) {
-                k.set_key(13, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::E) {
-                k.set_key(14, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::E) {
-                k.set_key(14, Key::Up);
-            }
-
-            if input.key_pressed(VirtualKeyCode::F) {
-                k.set_key(15, Key::Down);
-            }
-
-            if input.key_released(VirtualKeyCode::F) {
-                k.set_key(15, Key::Up);
-            }
+            _ => (),
         }
+
+        // if input.update(&event) {
+
+        //     // TODO Add an option to change keybindings on start up. Can save in a config file
+        //     // and load that file on startup
+        //     if input.key_pressed(VirtualKeyCode::Numpad7) {
+        //         k.set_key(1, Key::Down);
+        //     }
+
+        //     if input.key_released(VirtualKeyCode::Numpad7) {
+        //         k.set_key(1, Key::Up);
+        //     }
+
+        //     if input.key_pressed(VirtualKeyCode::Numpad3) {
+        //         k.set_key(3, Key::Down);
+        //     }
+
+        //     if input.key_released(VirtualKeyCode::Numpad3) {
+        //         k.set_key(3, Key::Up);
+        //     }
+
+        //     if input.key_pressed(VirtualKeyCode::Numpad5) {
+        //         k.set_key(5, Key::Down);
+        //     }
+
+        //     if input.key_released(VirtualKeyCode::Numpad5) {
+        //         k.set_key(5, Key::Up);
+        //     }
+
+        //     if input.key_pressed(VirtualKeyCode::Numpad1) {
+        //         k.set_key(7, Key::Down);
+        //     }
+
+        //     if input.key_released(VirtualKeyCode::Numpad1) {
+        //         k.set_key(7, Key::Up);
+        //     }
+
+        //     if input.key_pressed(VirtualKeyCode::Numpad3) {
+        //         k.set_key(9, Key::Down);
+        //     }
+
+        //     if input.key_released(VirtualKeyCode::Numpad3) {
+        //         k.set_key(9, Key::Up);
+        //     }
+
+        //     if input.key_pressed(VirtualKeyCode::Numpad0) {
+        //         k.set_key(0, Key::Down);
+        //     }
+
+        //     if input.key_released(VirtualKeyCode::Numpad0) {
+        //         k.set_key(0, Key::Up);
+        //     }
+
+        //     if input.key_pressed(VirtualKeyCode::A) {
+        //         k.set_key(10, Key::Down);
+        //     }
+
+        //     if input.key_pressed(VirtualKeyCode::A) {
+        //         k.set_key(10, Key::Up);
+        //     }
+
+        //     if input.key_pressed(VirtualKeyCode::B) {
+        //         k.set_key(11, Key::Down);
+        //     }
+
+        //     if input.key_released(VirtualKeyCode::B) {
+        //         k.set_key(11, Key::Up);
+        //     }
+
+        //     if input.key_pressed(VirtualKeyCode::C) {
+        //         k.set_key(12, Key::Down);
+        //     }
+
+        //     if input.key_released(VirtualKeyCode::C) {
+        //         k.set_key(12, Key::Up);
+        //     }
+
+        //     if input.key_pressed(VirtualKeyCode::D) {
+        //         k.set_key(13, Key::Down);
+        //     }
+
+        //     if input.key_released(VirtualKeyCode::D) {
+        //         k.set_key(13, Key::Up);
+        //     }
+
+        //     if input.key_pressed(VirtualKeyCode::E) {
+        //         k.set_key(14, Key::Down);
+        //     }
+
+        //     if input.key_released(VirtualKeyCode::E) {
+        //         k.set_key(14, Key::Up);
+        //     }
+
+        //     if input.key_pressed(VirtualKeyCode::F) {
+        //         k.set_key(15, Key::Down);
+        //     }
+
+        //     if input.key_released(VirtualKeyCode::F) {
+        //         k.set_key(15, Key::Up);
+        //     }
+        // }
         // TODO instead of redrawing the frame every loop, can either send a signal from emulator when
         // a drw instrctuion is run, or just check the instruction in this loop
         window.request_redraw();

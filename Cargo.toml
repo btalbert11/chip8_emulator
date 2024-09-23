@@ -3,25 +3,26 @@ name = "chip8_emulator"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-getrandom = {version = "0.2", features = ["js"]}
 rand = "0.8.5"
-winit = "0.28"
-winit_input_helper = "0.14"
-pixels = "0.13.0"
+winit = {version = "0.29", features = ["rwh_05"]}
+# winit_input_helper = "0.16"
+pixels = "0.14.0"
 env_logger = "0.11.5"
 cfg-if = "1"
 log = "0.4"
+# wgpu = "22.0"
+pollster = "0.3"
 
-# [target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = {version = "0.2", features = ["js"]}
 console_error_panic_hook = "0.1.6"
 console_log = "1.0"
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4.30"
 web-sys = { version = "0.3", features = [
     "Document",
     "Window",
