@@ -2,7 +2,8 @@ use crate::{instruction::Instruction, keyboard::Keyboard, screen::Screen};
 use rand::Rng;
 use std::fmt;
 
-use std::time::Instant;
+// use std::time::Instant;
+use chrono::{Local, DateTime};
 
 pub struct Emulator {
     registers: [u8; 16],
@@ -18,7 +19,7 @@ pub struct Emulator {
     // eti_660_memory_index: usize,
     sprite_memory_index: usize,
     stack: [u16; 16],
-    time_counter: Instant,
+    time_counter: chrono::NaiveTime,
 }
 
 impl Emulator {
@@ -37,7 +38,7 @@ impl Emulator {
             // eti_660_memory_index: 0x600,
             sprite_memory_index: 0x000,
             stack: [0; 16],
-            time_counter: Instant::now(),
+            time_counter: Local::now().time(),
         };
         e.set_character_sprites();
         e
@@ -174,7 +175,9 @@ impl Emulator {
     // reads these values, it is safe to check how much time has passed since last emulation step and decrement accordingly
     // This is an impresise method but should be good enough for this project.
     fn decrement_counters(&mut self) {
-        let delay = self.time_counter.elapsed().as_millis();
+        let now = chrono::Local::now().time();
+        let diff = now - self.time_counter;
+        let delay = diff.num_milliseconds();
         if delay < 17 {
             return;
         }
@@ -193,7 +196,7 @@ impl Emulator {
             }
         }
 
-        self.time_counter = Instant::now();
+        self.time_counter = Local::now().time();
     }
 
     // This function handles all "External" aspects of opcode, i.e. updating timers,

@@ -56,11 +56,9 @@ fn load_rom(contents: Option<Vec<u8>>, filename: Option<&str>, e: &mut Emulator)
 
 // TODO move this to lib file to make it work on web maybe?
 #[cfg_attr(target_arch="wasm32", wasm_bindgen(start))]
-pub fn run() {
+pub async fn run() {
 
-    #[cfg(target_arch = "wasm32")]
-    console::log_1(&"Hello".into());
-
+    
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
             std::panic::set_hook(Box::new(console_error_panic_hook::hook));
@@ -70,7 +68,7 @@ pub fn run() {
         }
     }
 
-
+    
     let args: Vec<String> = env::args().collect();
     let mut filename: String = String::new();
 
@@ -78,8 +76,8 @@ pub fn run() {
     let mut e = Emulator::new();
     let mut k = Keyboard::new();
     let mut s = Screen::new(WIDTH, HEIGHT);
-
-
+    
+    
     #[cfg(target_arch = "wasm32")] {
         load_rom(Some(BREAKOUT_ROM.to_vec()), None, &mut e);
     }
@@ -93,25 +91,24 @@ pub fn run() {
             load_rom(None, Some(&filename), &mut e);
         }
     }
-
+    
     #[cfg(target_arch = "wasm32")]
     console::log_1(&filename.into());
-
-
+    
+    
     let event_loop = EventLoop::new().unwrap();
-    // let mut input = WinitInputHelper::new();
-
+    
     let window = {
         let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
         let scaled_size = LogicalSize::new(WIDTH as f64 * 3.0, HEIGHT as f64 * 3.0);
         WindowBuilder::new()
-            .with_title("Chip8")
-            .with_inner_size(scaled_size)
-            .with_min_inner_size(size)
-            .build(&event_loop)
-            .unwrap()
+        .with_title("Chip8")
+        .with_inner_size(scaled_size)
+        .with_min_inner_size(size)
+        .build(&event_loop)
+        .unwrap()
     };
-
+    
     #[cfg(target_arch = "wasm32")]
     {
     // Winit prevents sizing with CSS, so we have to set
@@ -130,17 +127,21 @@ pub fn run() {
         })
         .expect("Couldn't append canvas to document body.");
     }
-
-
+    
+    
     let mut pixels = {
         let window_size = window.inner_size();
-        let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
-        match Pixels::new(WIDTH as u32, HEIGHT as u32, surface_texture) {
+        #[cfg(target_arch = "wasm32")]
+        console::log_1(&"Made it here".into());
+        // #[cfg(target_arch = "wasm32")]
+        // panic!("{:?}", window_size.width);        
+        let surface_texture = SurfaceTexture::new(WIDTH as u32 * 3, HEIGHT as u32 * 3, &window);
+        match Pixels::new_async(WIDTH as u32, HEIGHT as u32, surface_texture).await {
             Ok(p) =>  p,
             Err(_) => panic!("failed to create Pixels object"),
         }
     };
-
+    
     let _ = event_loop.run(move |event, control_flow| {
         e.emulate_step(&k, &mut s);
 
@@ -156,6 +157,9 @@ pub fn run() {
                         ..
                     } => control_flow.exit(),
                     WindowEvent::RedrawRequested if window_id == window.id() => {
+                        if window.inner_size().width <= 0 {
+                            return;
+                        }
                         draw_pixels(pixels.frame_mut(), &s.screen_to_render());
                         if let Err(err) = pixels.render() {
                             println!("PIXEL DRAW ERROR: {}", err);
@@ -164,6 +168,9 @@ pub fn run() {
                         }
                     },
                     WindowEvent::Resized(physical_size) => {
+                        if physical_size.width <= 0 || physical_size.height <= 0 {
+                            return;
+                        }
                         if let Err(err) = pixels.resize_surface(physical_size.width, physical_size.height) {
                             println!("PIXEL RESIZE ERROR: {}", err);
                             control_flow.exit();
