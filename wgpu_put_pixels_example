@@ -12,6 +12,7 @@ use wasm_bindgen::prelude::*;
 type Rgb = [u8; 4];
 
 struct State<'a> {
+    // state for wgpu
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -20,11 +21,12 @@ struct State<'a> {
     window: &'a Window,
     render_pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
-    // view: wgpu::TextureView,
-    // texture: wgpu::TextureDescriptor<'a>,
+    texture: wgpu::Texture,
     // texture_data: Vec<Rgb>,
     // vars to keep track of misc state
     surface_configured: bool,
+    k_texture_width: u32,
+    k_texture_height: u32,
 }
 
 impl<'a> State<'a> {
@@ -82,17 +84,21 @@ impl<'a> State<'a> {
         let k_texture_height = 7;
         let r: Rgb = [255, 0, 0, 255];
         let g: Rgb = [0, 255, 0, 255];
-        let b: Rgb = [0, 0, 255, 255];
+        let u: Rgb = [0, 0, 255, 255];
+        let w: Rgb = [255, 255, 255, 255];
+        let b: Rgb = [0, 0, 0, 255];
 
         let texture_data = vec![
-            b, r, r, r, r,
-            r, b, b, b, r,
-            r, b, r, r, r,
-            r, b, r, r, r,
-            r, b, g, g, r,
-            b, b, b, g, r,
-            r, r, r, b, b,
+            u, r, r, r, r,
+            r, u, u, u, r,
+            r, u, r, r, r,
+            r, u, r, r, r,
+            r, u, g, g, r,
+            u, u, u, g, r,
+            r, r, r, u, u,
         ];
+
+
 
         let texture = device.create_texture(&wgpu::TextureDescriptor{
             label: Some("hard coded texture"),
@@ -222,6 +228,9 @@ impl<'a> State<'a> {
             render_pipeline,
             bind_group,
             surface_configured: false,
+            texture,
+            k_texture_width,
+            k_texture_height,
         }
     }
 
@@ -245,6 +254,37 @@ impl<'a> State<'a> {
 
     fn update(&mut self) {
         // todo!()
+    }
+
+    pub fn update_texture(&mut self, new_texture_data: Vec<Rgb>) {
+        if new_texture_data.len() as u32 > self.k_texture_height * self.k_texture_width {
+            panic!("Invalid number of bytes in new texture data");
+        }
+
+        self.queue.write_texture(
+            wgpu::ImageCopyTextureBase{
+                texture: &self.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: 0,
+                    y: 0,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            }, 
+            new_texture_data.as_flattened(), 
+            wgpu::ImageDataLayout { 
+                offset: 0, 
+                bytes_per_row: Some(self.k_texture_width * 4), 
+                rows_per_image: None 
+            }, 
+            wgpu::Extent3d { 
+                width: self.k_texture_width, 
+                height: self.k_texture_height, 
+                depth_or_array_layers: 1 
+            }
+        );
+
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -333,6 +373,22 @@ pub async fn run() {
 
     let mut state = State::new(&window).await;
 
+    let r: Rgb = [255, 0, 0, 255];
+    let g: Rgb = [0, 255, 0, 255];
+    let u: Rgb = [0, 0, 255, 255];
+    let w: Rgb = [255, 255, 255, 255];
+    let b: Rgb = [0, 0, 0, 255];
+
+    let texture_data_two = vec![
+        w, b, b, b, b,
+        b, w, w, w, b,
+        b, b, b, w, b,
+        b, b, b, b, b,
+        b, b, b, b, b,
+        b, b, b, b, b,
+        b, b, b, b, b,
+    ];
+
     let _ = event_loop.run(move |event, control_flow| match event {
         Event::WindowEvent {
             ref event,
@@ -349,6 +405,18 @@ pub async fn run() {
                         },
                     ..
                 } => control_flow.exit(),
+                WindowEvent::KeyboardInput { 
+                    event:
+                        KeyEvent {
+                            state: ElementState::Pressed,
+                            physical_key: PhysicalKey::Code(KeyCode::Space),
+                            ..
+                        },
+                    ..
+                } => {
+                    state.update_texture(texture_data_two.to_owned());
+                    state.window.request_redraw();
+                }
                 WindowEvent::Resized(physical_size) => {
                     state.resize(*physical_size);
                     state.surface_configured = true;
