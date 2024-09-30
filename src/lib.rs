@@ -2,7 +2,12 @@ use emulator::Emulator;
 use keyboard::{Key, Keyboard};
 use screen::Screen;
 use pixels::{Error, Pixels, SurfaceTexture};
-use std::{env, fs, process::exit};
+use std::{
+    env, 
+    fs, 
+    process::exit,
+    io::{stdout, stdin, Write},
+};
 use winit::{
     dpi::LogicalSize,
     event::*,
@@ -10,6 +15,7 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::{WindowBuilder, Window},
 };
+use chrono::{Local, DateTime};
 // use winit_input_helper::WinitInputHelper;
 #[cfg(target_arch = "wasm32")]
 use web_sys::console;
@@ -35,26 +41,52 @@ fn draw_pixels(pixels_buffer: &mut [u8], screen_buffer: &Vec<[u8; 4]>) {
 const WIDTH: u32 = 64;
 const HEIGHT: u32 = 32;
 
+#[cfg(target_arch = "wasm32")]
 const BREAKOUT_ROM: &[u8] = include_bytes!("../Breakout.ch8");
 
-fn load_rom(contents: Option<Vec<u8>>, filename: Option<&str>, e: &mut Emulator) {
+fn load_rom(contents: Option<Vec<u8>>, filename: Option<&str>, e: &mut Emulator) -> Result<(), ()> {
     let mut c: Vec<u8>;
     if let Some(f) = filename {
-        c = fs::read(f).expect("Rom file not found.");
+        c = match fs::read(f) {
+            Ok(file_contents) => file_contents,
+            Err(_) => {
+                println!("Rom file not found.");
+                return Err(());
+            }
+        }
     }
     else if let Some(con) = contents {
         c = con;
     }
     else {
-        panic!("No Rom provided");
+        print!("No Rom provided");
+        return Err(());
     }
 
+    e.clear_emulator();
     for i in 0..c.len() {
         e.set_memory(c[i], i + e.program_start_address());
     }
+    Ok(())
 }
 
-// TODO move this to lib file to make it work on web maybe?
+fn read_file(e: &mut Emulator) -> Result<(), ()>{
+    let mut new_rom_file = String::from("");
+    println!("Enter new Rom filepath:");
+    let _ = stdout().flush();
+    match stdin().read_line(&mut new_rom_file) {
+        Ok(_) => (),
+        Err(_) => {
+            print!("Error reading filename");
+            return Err(());
+        }
+    }
+    new_rom_file = new_rom_file.trim().to_string();
+
+    load_rom(None, Some(&new_rom_file), e)?;
+    Ok(())
+}
+
 #[cfg_attr(target_arch="wasm32", wasm_bindgen(start))]
 pub async fn run() {
 
@@ -88,19 +120,16 @@ pub async fn run() {
             exit(-1);
         } else {
             filename = String::from(&args[1]);
-            load_rom(None, Some(&filename), &mut e);
+            let _ = load_rom(None, Some(&filename), &mut e);
         }
     }
-    
-    #[cfg(target_arch = "wasm32")]
-    console::log_1(&filename.into());
     
     
     let event_loop = EventLoop::new().unwrap();
     
     let window = {
         let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
-        let scaled_size = LogicalSize::new(WIDTH as f64 * 3.0, HEIGHT as f64 * 3.0);
+        let scaled_size = LogicalSize::new(WIDTH as f64 * 8.0, HEIGHT as f64 * 8.0);
         WindowBuilder::new()
         .with_title("Chip8")
         .with_inner_size(scaled_size)
@@ -131,20 +160,21 @@ pub async fn run() {
     
     let mut pixels = {
         let window_size = window.inner_size();
-        #[cfg(target_arch = "wasm32")]
-        console::log_1(&"Made it here".into());
-        // #[cfg(target_arch = "wasm32")]
-        // panic!("{:?}", window_size.width);        
-        let surface_texture = SurfaceTexture::new(WIDTH as u32 * 3, HEIGHT as u32 * 3, &window);
+        let surface_texture = SurfaceTexture::new(WIDTH as u32 * 8, HEIGHT as u32 * 8, &window);
         match Pixels::new_async(WIDTH as u32, HEIGHT as u32, surface_texture).await {
             Ok(p) =>  p,
             Err(_) => panic!("failed to create Pixels object"),
         }
     };
+
+    let mut now = Local::now().time();
     
     let _ = event_loop.run(move |event, control_flow| {
-        e.emulate_step(&k, &mut s);
-
+        let diff = (Local::now().time() - now).num_microseconds().unwrap_or(0);
+        if diff > 1851 {
+            e.emulate_step(&k, &mut s, diff);
+            now = Local::now().time();
+        }
         match event {
             Event::WindowEvent { 
                 window_id, 
@@ -157,6 +187,7 @@ pub async fn run() {
                         ..
                     } => control_flow.exit(),
                     WindowEvent::RedrawRequested if window_id == window.id() => {
+
                         if window.inner_size().width <= 0 {
                             return;
                         }
@@ -177,7 +208,25 @@ pub async fn run() {
                             return;
                         }
                     },
+                    // change rom
+                    WindowEvent::KeyboardInput { 
+                        event:
+                            KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::Enter), ..},
+                            ..
+                    } => {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            match read_file(&mut e) {
+                                Ok(_) => {
+                                    s.clear_screen();
+                                },
+                                Err(_) => (),
+                            }
+                            now = Local::now().time();
+                        }
+                    },
                     // player input management
+                    // TODO Add an option to change keybindings on start up. Can save in a config file
                     // Left
                     WindowEvent::KeyboardInput { 
                         event:
@@ -232,7 +281,6 @@ pub async fn run() {
 
         // if input.update(&event) {
 
-        //     // TODO Add an option to change keybindings on start up. Can save in a config file
         //     // and load that file on startup
         //     if input.key_pressed(VirtualKeyCode::Numpad7) {
         //         k.set_key(1, Key::Down);

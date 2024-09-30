@@ -162,6 +162,19 @@ impl Emulator {
         self.memory[mem_address] = byte;
     }
 
+    pub fn clear_emulator(&mut self) {
+        self.registers = [0; 16];
+        self.pc = 0x200;
+        self.sp = 0;
+        self.delay_timer_register = 0;
+        self.sound_timer_register = 0;
+        self.address_register = 0;
+        self.memory = [0; 0x1000];
+        self.stack = [0; 16];
+        self.time_counter = Local::now().time();
+        self.set_character_sprites();
+    }
+
     pub fn print_memory(&self) {
         for i in (0..0xFFF).step_by(16) {
             println!("{:#05x}: {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x}, {:#06x},",
@@ -200,30 +213,36 @@ impl Emulator {
     }
 
     // This function handles all "External" aspects of opcode, i.e. updating timers,
-    // waiting for input, incrememting pc or not, etc.
-    pub fn emulate_step(&mut self, keyboard: &Keyboard, screen: &mut Screen) {
-        self.decrement_counters();
-        let first_byte = self.memory[self.pc as usize];
-        let second_byte = self.memory[(self.pc + 1) as usize];
-        let opcode: u16 = ((first_byte as u16) << 8) | (second_byte as u16);
-        // println!("{:#06x}, high: {:#04x}, low: {:#04x}", self.pc, first_byte, second_byte);
-        let curr_instruction = Instruction::parse_opcode(opcode);
-        match curr_instruction {
-            // Can I just return here?
-            Instruction::LD_Vx_K => match keyboard.get_first_key_down() {
-                Some(_) => (),
-                None => return,
-            },
-            _ => (),
-        }
-        self.emulate(opcode, &keyboard, screen);
-        // match all jump/call instructions and do not increment the pc.
-        match curr_instruction {
-            Instruction::JP_addr => (),
-            Instruction::JP_V0 => (),
-            Instruction::CALL_addr => (),
-            _ => self.pc += 2,
-        }
+    // waiting for input, incrememting pc or not, running multiple steps, etc.
+    // Since chip8 was originally an interpreted language, there is no offical rate that
+    // it runs at. I found 540hz from the internet to be a good rate.
+    pub fn emulate_step(&mut self, keyboard: &Keyboard, screen: &mut Screen, diff_as_microseconds: i64) {
+        if diff_as_microseconds < 1851 { return; }
+        let steps = diff_as_microseconds / 1851;
+
+        for i in 0..steps {
+            self.decrement_counters();
+            let first_byte = self.memory[self.pc as usize];
+            let second_byte = self.memory[(self.pc + 1) as usize];
+            let opcode: u16 = ((first_byte as u16) << 8) | (second_byte as u16);
+            // println!("{:#06x}, high: {:#04x}, low: {:#04x}", self.pc, first_byte, second_byte);
+            let curr_instruction = Instruction::parse_opcode(opcode);
+            match curr_instruction {
+                Instruction::LD_Vx_K => match keyboard.get_first_key_down() {
+                    Some(_) => (),
+                    None => return,
+                },
+                _ => (),
+            }
+            self.emulate(opcode, &keyboard, screen);
+            // match all jump/call instructions and do not increment the pc.
+            match curr_instruction {
+                Instruction::JP_addr => (),
+                Instruction::JP_V0 => (),
+                Instruction::CALL_addr => (),
+                _ => self.pc += 2,
+            }
+    }
     }
 
     pub fn emulate(&mut self, opcode: u16, keyboard: &Keyboard, screen: &mut Screen) {
