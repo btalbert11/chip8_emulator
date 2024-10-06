@@ -3,25 +3,57 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <!-- <meta http-equiv="X-UA-Compatible" content="IE=edge"> -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Learn WGPU</title>
-    <style>
-        canvas {
-            background-color: black;
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 
-<body id="chip8-emulator">
-  <script type="module">
-      import init from "./pkg/chip8_emulator.js";
-      init().then(() => {
-          console.log("WASM Loaded");
-      });
-  </script>
+
+<body>
+    <input type="file" id="fileInput">Upload ROM file</input>
+    <div id="chip8-emulator">
+
+    </div>
+    <script type="module">
+        import init from "./pkg/chip8_emulator.js";
+        init().then(() => {
+            console.log("WASM Loaded");
+        });
+
+        // import * as wasm from "./pkg/chip8_emulator_bg.wasm";
+
+        // wasm.load_rom();
+    
+        async function readFile() {
+            var input = document.createElement('input');
+            input.type = 'file';
+            var file
+            input.onchange = e => {
+                file = e.target.files[0];
+                console.log(file.name);
+            }
+            input.click();
+            console.log(file.name);
+            return file.name
+        }
+    
+        async function readRom() {
+            console.log(this.files[0].name);
+
+            let filePath;
+            if (this.files.length > 0) {
+                filePath = this.files[0].name;
+            } else {
+                return;
+            }
+            var data = await fetch(filePath).then(response => {return response.text()});
+            console.log(data)
+        }
+
+        document.getElementById('fileInput').addEventListener('change', readRom);
+    </script>
 </body>
 
 </html>
 
- 

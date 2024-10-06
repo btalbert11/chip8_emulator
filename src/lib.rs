@@ -44,46 +44,60 @@ const HEIGHT: u32 = 32;
 #[cfg(target_arch = "wasm32")]
 const BREAKOUT_ROM: &[u8] = include_bytes!("../Breakout.ch8");
 
-fn load_rom(contents: Option<Vec<u8>>, filename: Option<&str>, e: &mut Emulator) -> Result<(), ()> {
-    let mut c: Vec<u8>;
-    if let Some(f) = filename {
-        c = match fs::read(f) {
-            Ok(file_contents) => file_contents,
-            Err(_) => {
-                println!("Rom file not found.");
-                return Err(());
+// fn load_rom(contents: Option<Vec<u8>>, filename: Option<&str>, e: &mut Emulator) -> Result<(), ()> {
+//     let c: Vec<u8>;
+//     if let Some(f) = filename {
+//         c = match fs::read(f) {
+//             Ok(file_contents) => file_contents,
+//             Err(_) => {
+//                 println!("Rom file not found.");
+//                 return Err(());
+//             }
+//         }
+//     }
+//     else if let Some(con) = contents {
+//         c = con;
+//     }
+//     else {
+//         print!("No Rom provided");
+//         return Err(());
+//     }
+
+//     e.clear_emulator();
+//     for i in 0..c.len() {
+//         e.set_memory(c[i], i + e.program_start_address());
+//     }
+//     Ok(())
+// }
+
+fn read_file(e: &mut Emulator, file_path: Option<&String>) -> Result<(), ()>{
+    let mut new_rom_file = String::from("");
+    match file_path {
+        Some(f) => new_rom_file = f.clone(),
+        None => {
+            println!("Enter new Rom filepath:");
+            let _ = stdout().flush();
+            match stdin().read_line(&mut new_rom_file) {
+                Ok(_) => (),
+                Err(_) => {
+                    print!("Error reading filename");
+                    return Err(());
+                }
             }
+            new_rom_file = new_rom_file.trim().to_string();
+
         }
     }
-    else if let Some(con) = contents {
-        c = con;
-    }
-    else {
-        print!("No Rom provided");
-        return Err(());
-    }
 
-    e.clear_emulator();
-    for i in 0..c.len() {
-        e.set_memory(c[i], i + e.program_start_address());
-    }
-    Ok(())
-}
-
-fn read_file(e: &mut Emulator) -> Result<(), ()>{
-    let mut new_rom_file = String::from("");
-    println!("Enter new Rom filepath:");
-    let _ = stdout().flush();
-    match stdin().read_line(&mut new_rom_file) {
-        Ok(_) => (),
+    let contents: Vec<u8> = match fs::read(new_rom_file) {
+        Ok(file_contents) => file_contents,
         Err(_) => {
-            print!("Error reading filename");
+            println!("Rom file not found.");
             return Err(());
         }
-    }
-    new_rom_file = new_rom_file.trim().to_string();
+    };
 
-    load_rom(None, Some(&new_rom_file), e)?;
+    e.load_rom(contents)?;
     Ok(())
 }
 
@@ -111,7 +125,7 @@ pub async fn run() {
     
     
     #[cfg(target_arch = "wasm32")] {
-        load_rom(Some(BREAKOUT_ROM.to_vec()), None, &mut e);
+        e.load_rom(BREAKOUT_ROM.to_vec());
     }
     #[cfg(not(target_arch = "wasm32"))]
     { 
@@ -120,7 +134,7 @@ pub async fn run() {
             exit(-1);
         } else {
             filename = String::from(&args[1]);
-            let _ = load_rom(None, Some(&filename), &mut e);
+            let _ = read_file(&mut e, Some(&filename));
         }
     }
     
@@ -216,7 +230,7 @@ pub async fn run() {
                     } => {
                         #[cfg(not(target_arch = "wasm32"))]
                         {
-                            match read_file(&mut e) {
+                            match read_file(&mut e, None) {
                                 Ok(_) => {
                                     s.clear_screen();
                                 },

@@ -20,6 +20,7 @@ pub struct Emulator {
     sprite_memory_index: usize,
     stack: [u16; 16],
     time_counter: chrono::NaiveTime,
+    paused: bool,
 }
 
 impl Emulator {
@@ -39,6 +40,7 @@ impl Emulator {
             sprite_memory_index: 0x000,
             stack: [0; 16],
             time_counter: Local::now().time(),
+            paused: false,
         };
         e.set_character_sprites();
         e
@@ -158,9 +160,24 @@ impl Emulator {
         self.program_memory_index
     }
 
+
+    pub fn load_rom(&mut self ,contents: Vec<u8>) -> Result<(), ()> {
+    
+        if contents.len() > self.memory.len() - self.program_memory_index {
+            return Err(());
+        }
+
+        self.clear_emulator();
+        for i in 0..contents.len() {
+            self.set_memory(contents[i], i + self.program_start_address());
+        }
+        Ok(())
+    }
+
     pub fn set_memory(&mut self, byte: u8, mem_address: usize) {
         self.memory[mem_address] = byte;
     }
+
 
     pub fn clear_emulator(&mut self) {
         self.registers = [0; 16];
@@ -212,11 +229,20 @@ impl Emulator {
         self.time_counter = Local::now().time();
     }
 
+    pub fn pause(&mut self) {
+        self.paused = true;
+    }
+
+    pub fn unpause(&mut self) {
+        self.paused = false;
+    }
+
     // This function handles all "External" aspects of opcode, i.e. updating timers,
     // waiting for input, incrememting pc or not, running multiple steps, etc.
     // Since chip8 was originally an interpreted language, there is no offical rate that
     // it runs at. I found 540hz from the internet to be a good rate.
     pub fn emulate_step(&mut self, keyboard: &Keyboard, screen: &mut Screen, diff_as_microseconds: i64) {
+        if self.paused { return; }
         if diff_as_microseconds < 1851 { return; }
         let steps = diff_as_microseconds / 1851;
 
