@@ -2,9 +2,13 @@ use crate::{instruction::Instruction, keyboard::Keyboard, screen::Screen};
 use rand::Rng;
 use std::fmt;
 
-// use std::time::Instant;
+
 use chrono::{Local, DateTime};
 
+// #[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct Emulator {
     registers: [u8; 16],
     flag_register_index: usize,
@@ -23,7 +27,9 @@ pub struct Emulator {
     paused: bool,
 }
 
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl Emulator {
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen(constructor))]
     pub fn new() -> Emulator {
         let mut e = Emulator {
             registers: [0; 16],
@@ -161,10 +167,10 @@ impl Emulator {
     }
 
 
-    pub fn load_rom(&mut self ,contents: Vec<u8>) -> Result<(), ()> {
+    pub fn load_rom(&mut self ,contents: Vec<u8>) -> Result<(), JsValue> {
     
         if contents.len() > self.memory.len() - self.program_memory_index {
-            return Err(());
+            return Err(JsValue::from_str("Rom length greater than memory size."));
         }
 
         self.clear_emulator();

@@ -16,7 +16,6 @@ use winit::{
     window::{WindowBuilder, Window},
 };
 use chrono::{Local, DateTime};
-// use winit_input_helper::WinitInputHelper;
 #[cfg(target_arch = "wasm32")]
 use web_sys::console;
 #[cfg(target_arch = "wasm32")]
@@ -24,11 +23,15 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsValue;
 
+#[cfg(target_arch = "wasm32")]
+use winit::platform::web::EventLoopExtWebSys;
+
 pub mod emulator;
 pub mod instruction;
 pub mod keyboard;
 pub mod screen;
 pub mod wgpu_state;
+
 
 
 fn draw_pixels(pixels_buffer: &mut [u8], screen_buffer: &Vec<[u8; 4]>) {
@@ -44,31 +47,6 @@ const HEIGHT: u32 = 32;
 #[cfg(target_arch = "wasm32")]
 const BREAKOUT_ROM: &[u8] = include_bytes!("../Breakout.ch8");
 
-// fn load_rom(contents: Option<Vec<u8>>, filename: Option<&str>, e: &mut Emulator) -> Result<(), ()> {
-//     let c: Vec<u8>;
-//     if let Some(f) = filename {
-//         c = match fs::read(f) {
-//             Ok(file_contents) => file_contents,
-//             Err(_) => {
-//                 println!("Rom file not found.");
-//                 return Err(());
-//             }
-//         }
-//     }
-//     else if let Some(con) = contents {
-//         c = con;
-//     }
-//     else {
-//         print!("No Rom provided");
-//         return Err(());
-//     }
-
-//     e.clear_emulator();
-//     for i in 0..c.len() {
-//         e.set_memory(c[i], i + e.program_start_address());
-//     }
-//     Ok(())
-// }
 
 fn read_file(e: &mut Emulator, file_path: Option<&String>) -> Result<(), ()>{
     let mut new_rom_file = String::from("");
@@ -97,14 +75,19 @@ fn read_file(e: &mut Emulator, file_path: Option<&String>) -> Result<(), ()>{
         }
     };
 
-    e.load_rom(contents)?;
+    match e.load_rom(contents) {
+        Ok(_) => (),
+        Err(_) => { 
+            print!("Could not load rom");
+            return Err(());
+        }
+    }
     Ok(())
 }
 
-#[cfg_attr(target_arch="wasm32", wasm_bindgen(start))]
-pub async fn run() {
 
-    
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub fn init_loggers() {
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
             std::panic::set_hook(Box::new(console_error_panic_hook::hook));
@@ -113,13 +96,14 @@ pub async fn run() {
             env_logger::init();
         }
     }
+}
 
+// #[cfg_attr(target_arch="wasm32", wasm_bindgen(start))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn run(mut e: Emulator) {
     
-    let args: Vec<String> = env::args().collect();
-    let mut filename: String = String::new();
-
-
-    let mut e = Emulator::new();
+    
+    // let mut e = Emulator::new();
     let mut k = Keyboard::new();
     let mut s = Screen::new(WIDTH, HEIGHT);
     
@@ -129,6 +113,8 @@ pub async fn run() {
     }
     #[cfg(not(target_arch = "wasm32"))]
     { 
+        let args: Vec<String> = env::args().collect();
+        let mut filename: String = String::new();
         if args.len() != 2 {
             println!("Needs a filename");
             exit(-1);
@@ -183,6 +169,7 @@ pub async fn run() {
 
     let mut now = Local::now().time();
     
+
     let _ = event_loop.run(move |event, control_flow| {
         let diff = (Local::now().time() - now).num_microseconds().unwrap_or(0);
         if diff > 1851 {
@@ -292,7 +279,7 @@ pub async fn run() {
             }
             _ => (),
         }
-
+        // TODO readd the rest of the key bindings
         // if input.update(&event) {
 
         //     // and load that file on startup

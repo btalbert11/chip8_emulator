@@ -16,15 +16,15 @@
 
     </div>
     <script type="module">
-        import init from "./pkg/chip8_emulator.js";
-        init().then(() => {
+        import init, { Emulator, run, init_loggers } from "./pkg/chip8_emulator.js";
+        await init();
+        var emulator = new Emulator();
+        function start_emulator() {
             console.log("WASM Loaded");
-        });
-
-        // import * as wasm from "./pkg/chip8_emulator_bg.wasm";
-
-        // wasm.load_rom();
-    
+            init_loggers();
+            console.log(emulator);
+            run(emulator);
+        }
         async function readFile() {
             var input = document.createElement('input');
             input.type = 'file';
@@ -49,9 +49,19 @@
             }
             var data = await fetch(filePath).then(response => {return response.text()});
             console.log(data)
+            let element = document.getElementById('chip8-emulator');
+            element.remove();
+            element = document.createElement('div');
+            element.setAttribute('id', 'chip8-emulator'); 
+            emulator = new Emulator();
+            emulator.load_rom(data);
+            run(emulator);
         }
+    
 
         document.getElementById('fileInput').addEventListener('change', readRom);
+
+        start_emulator();
     </script>
 </body>
 

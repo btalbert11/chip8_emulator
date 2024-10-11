@@ -4,6 +4,10 @@ pub enum Key {
     Down,
 }
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct Keyboard {
     keys: [Key; 16],
 }
