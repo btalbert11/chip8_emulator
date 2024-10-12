@@ -11,9 +11,10 @@ use std::{
 use winit::{
     dpi::LogicalSize,
     event::*,
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::{ControlFlow, EventLoop, ActiveEventLoop},
+    application::ApplicationHandler,
     keyboard::{KeyCode, PhysicalKey},
-    window::{WindowBuilder, Window},
+    window::{Window, WindowId},
 };
 use chrono::{Local, DateTime};
 #[cfg(target_arch = "wasm32")]
@@ -98,6 +99,193 @@ pub fn init_loggers() {
     }
 }
 
+struct App {
+    window: Option<Window>,
+    e: Emulator,
+    k: Keyboard,
+    s: Screen,
+    pixels: Option<Pixels>,
+    now: chrono::NaiveTime,
+}
+
+impl App {
+    pub fn new(e: Emulator, k: Keyboard, s: Screen, now: chrono::NaiveTime, pixels: Option<Pixels>) -> Self {
+        App {
+            window: None,
+            e: e,
+            k: k,
+            s: s,
+            pixels: pixels,
+            now: now,
+        }
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        self.window = Some(event_loop.create_window(Window::default_attributes()).unwrap());
+        self.now = Local::now().time();
+
+
+        if let Some(window) = self.window.as_ref() {
+        
+        #[cfg(target_arch = "wasm32")]
+        {
+            // Winit prevents sizing with CSS, so we have to set
+            // the size manually when on web.
+                use winit::dpi::PhysicalSize;
+                let _ = window.request_inner_size(PhysicalSize::new(450, 450));
+                
+                use winit::platform::web::WindowExtWebSys;
+                web_sys::window()
+                    .and_then(|win| win.document())
+                    .and_then(|doc| {
+                        let dst = doc.get_element_by_id("chip8-emulator")?;
+                        let canvas = web_sys::Element::from(window.canvas()?);
+                        dst.append_child(&canvas).ok()?;
+                        Some(())
+                    })
+                    .expect("Couldn't append canvas to document body.");
+
+                    self.pixels = {
+                        let surface_texture = SurfaceTexture::new(WIDTH as u32 * 8, HEIGHT as u32 * 8, &window);
+                        match Pixels::new_async(WIDTH as u32, HEIGHT as u32, surface_texture).await {
+                            Ok(p) =>  Some(p),
+                            Err(_) => panic!("failed to create Pixels object"),
+                        }
+                    };    
+            }
+            
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                self.pixels = {
+                    let surface_texture = SurfaceTexture::new(WIDTH as u32 * 8, HEIGHT as u32 * 8, &window);
+                    match Pixels::new(WIDTH as u32, HEIGHT as u32, surface_texture) {
+                        Ok(p) =>  Some(p),
+                        Err(_) => panic!("failed to create Pixels object"),
+                    }
+                };
+            }
+        }
+    }
+
+    fn window_event(
+            &mut self,
+            event_loop: &ActiveEventLoop,
+            window_id: WindowId,
+            event: WindowEvent,
+        ) {
+            let diff = (Local::now().time() - self.now).num_microseconds().unwrap_or(0);
+            if diff > 1851 {
+                self.e.emulate_step(&self.k, &mut self.s, diff);
+                self.now = Local::now().time();
+            }
+            if let (Some(window), Some(pixels)) = (self.window.as_ref(), self.pixels.as_mut()) {
+                match event {
+                    // window management
+                    WindowEvent::CloseRequested | WindowEvent::KeyboardInput { 
+                        event: KeyEvent {state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::Escape), ..},
+                        ..
+                    } => event_loop.exit(),
+                    WindowEvent::RedrawRequested if window_id == window.id() => {
+                        if window.inner_size().width <= 0 {
+                            return;
+                        }
+                        draw_pixels(pixels.frame_mut(), &self.s.screen_to_render());
+                        if let Err(err) = pixels.render() {
+                            println!("PIXEL DRAW ERROR: {}", err);
+                            event_loop.exit();
+                            return;
+                        }
+                    },
+                    WindowEvent::Resized(physical_size) => {
+                        if physical_size.width <= 0 || physical_size.height <= 0 {
+                            return;
+                        }
+                        if let Err(err) = pixels.resize_surface(physical_size.width, physical_size.height) {
+                            println!("PIXEL RESIZE ERROR: {}", err);
+                            event_loop.exit();
+                            return;
+                        }
+                    },
+                    // change rom
+                    WindowEvent::KeyboardInput { 
+                        event:
+                            KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::Enter), ..},
+                            ..
+                    } => {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            match read_file(&mut self.e, None) {
+                                Ok(_) => {
+                                    self.s.clear_screen();
+                                },
+                                Err(_) => (),
+                            }
+                            self.now = Local::now().time();
+                        }
+                    },
+                    // player input management
+                    // TODO Add an option to change keybindings on start up. Can save in a config file
+                    // Left
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::ArrowLeft), ..},
+                        .. 
+                    } => self.k.set_key(4, Key::Down),
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(KeyCode::ArrowLeft), ..},
+                        .. 
+                    } => self.k.set_key(4, Key::Up),
+                    // Right
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::ArrowRight), ..},
+                        .. 
+                    } => self.k.set_key(6, Key::Down),
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(KeyCode::ArrowRight), ..},
+                        .. 
+                    } => self.k.set_key(6, Key::Up),
+                    // Down
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::ArrowDown), ..},
+                        .. 
+                    } => self.k.set_key(8, Key::Down),
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(KeyCode::ArrowDown), ..},
+                        .. 
+                    } => self.k.set_key(8, Key::Up),
+                    // Up
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::ArrowUp), ..},
+                        .. 
+                    } => self.k.set_key(2, Key::Down),
+                    WindowEvent::KeyboardInput { 
+                        event:
+                        KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(KeyCode::ArrowUp), ..},
+                        .. 
+                    } => self.k.set_key(2, Key::Up),
+                    
+                    
+                    _ => (),
+                }
+
+                window.request_redraw();
+            }
+
+    }
+            // TODO readd the rest of the key bindings
+           
+            // TODO instead of redrawing the frame every loop, can either send a signal from emulator when
+            // a drw instrctuion is run, or just check the instruction in this loop
+}
+
 // #[cfg_attr(target_arch="wasm32", wasm_bindgen(start))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub async fn run(mut e: Emulator) {
@@ -124,263 +312,52 @@ pub async fn run(mut e: Emulator) {
         }
     }
     
+    let mut now = Local::now().time();
+    
+    // let window = {
+        //     let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
+    //     let scaled_size = LogicalSize::new(WIDTH as f64 * 8.0, HEIGHT as f64 * 8.0);
+    //     WindowBuilder::new()
+    //     .with_title("Chip8")
+    //     .with_inner_size(scaled_size)
+    //     .with_min_inner_size(size)
+    //     .build(&event_loop)
+    //     .unwrap()
+    // };
+    
     
     let event_loop = EventLoop::new().unwrap();
     
-    let window = {
-        let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
-        let scaled_size = LogicalSize::new(WIDTH as f64 * 8.0, HEIGHT as f64 * 8.0);
-        WindowBuilder::new()
-        .with_title("Chip8")
-        .with_inner_size(scaled_size)
-        .with_min_inner_size(size)
-        .build(&event_loop)
-        .unwrap()
-    };
-    
-    #[cfg(target_arch = "wasm32")]
-    {
-    // Winit prevents sizing with CSS, so we have to set
-    // the size manually when on web.
-    use winit::dpi::PhysicalSize;
-    let _ = window.request_inner_size(PhysicalSize::new(450, 450));
-    
-    use winit::platform::web::WindowExtWebSys;
-    web_sys::window()
-        .and_then(|win| win.document())
-        .and_then(|doc| {
-            let dst = doc.get_element_by_id("chip8-emulator")?;
-            let canvas = web_sys::Element::from(window.canvas()?);
-            dst.append_child(&canvas).ok()?;
-            Some(())
-        })
-        .expect("Couldn't append canvas to document body.");
-    }
-    
-    
-    let mut pixels = {
-        let window_size = window.inner_size();
-        let surface_texture = SurfaceTexture::new(WIDTH as u32 * 8, HEIGHT as u32 * 8, &window);
-        match Pixels::new_async(WIDTH as u32, HEIGHT as u32, surface_texture).await {
-            Ok(p) =>  p,
-            Err(_) => panic!("failed to create Pixels object"),
-        }
-    };
-
-    let mut now = Local::now().time();
+    let mut app = App::new(e, k, s, now, None);
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = event_loop.run_app(&mut app);
+    #[cfg(target_arch="wasm32")]
+    event_loop.spawn_app(app);
     
 
-    let _ = event_loop.run(move |event, control_flow| {
-        let diff = (Local::now().time() - now).num_microseconds().unwrap_or(0);
-        if diff > 1851 {
-            e.emulate_step(&k, &mut s, diff);
-            now = Local::now().time();
-        }
-        match event {
-            Event::WindowEvent { 
-                window_id, 
-                ref event 
-            } if window_id == window.id() => {
-                match event {
-                    // window management
-                    WindowEvent::CloseRequested | WindowEvent::KeyboardInput { 
-                        event: KeyEvent {state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::Escape), ..},
-                        ..
-                    } => control_flow.exit(),
-                    WindowEvent::RedrawRequested if window_id == window.id() => {
-
-                        if window.inner_size().width <= 0 {
-                            return;
-                        }
-                        draw_pixels(pixels.frame_mut(), &s.screen_to_render());
-                        if let Err(err) = pixels.render() {
-                            println!("PIXEL DRAW ERROR: {}", err);
-                            control_flow.exit();
-                            return;
-                        }
-                    },
-                    WindowEvent::Resized(physical_size) => {
-                        if physical_size.width <= 0 || physical_size.height <= 0 {
-                            return;
-                        }
-                        if let Err(err) = pixels.resize_surface(physical_size.width, physical_size.height) {
-                            println!("PIXEL RESIZE ERROR: {}", err);
-                            control_flow.exit();
-                            return;
-                        }
-                    },
-                    // change rom
-                    WindowEvent::KeyboardInput { 
-                        event:
-                            KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::Enter), ..},
-                            ..
-                    } => {
-                        #[cfg(not(target_arch = "wasm32"))]
-                        {
-                            match read_file(&mut e, None) {
-                                Ok(_) => {
-                                    s.clear_screen();
-                                },
-                                Err(_) => (),
-                            }
-                            now = Local::now().time();
-                        }
-                    },
-                    // player input management
-                    // TODO Add an option to change keybindings on start up. Can save in a config file
-                    // Left
-                    WindowEvent::KeyboardInput { 
-                        event:
-                        KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::ArrowLeft), ..},
-                        .. 
-                    } => k.set_key(4, Key::Down),
-                    WindowEvent::KeyboardInput { 
-                        event:
-                        KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(KeyCode::ArrowLeft), ..},
-                        .. 
-                    } => k.set_key(4, Key::Up),
-                    // Right
-                    WindowEvent::KeyboardInput { 
-                        event:
-                        KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::ArrowRight), ..},
-                        .. 
-                    } => k.set_key(6, Key::Down),
-                    WindowEvent::KeyboardInput { 
-                        event:
-                        KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(KeyCode::ArrowRight), ..},
-                        .. 
-                    } => k.set_key(6, Key::Up),
-                    // Down
-                    WindowEvent::KeyboardInput { 
-                        event:
-                        KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::ArrowDown), ..},
-                        .. 
-                    } => k.set_key(8, Key::Down),
-                    WindowEvent::KeyboardInput { 
-                        event:
-                        KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(KeyCode::ArrowDown), ..},
-                        .. 
-                    } => k.set_key(8, Key::Up),
-                    // Up
-                    WindowEvent::KeyboardInput { 
-                        event:
-                        KeyEvent { state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::ArrowUp), ..},
-                        .. 
-                    } => k.set_key(2, Key::Down),
-                    WindowEvent::KeyboardInput { 
-                        event:
-                        KeyEvent { state: ElementState::Released, physical_key: PhysicalKey::Code(KeyCode::ArrowUp), ..},
-                        .. 
-                    } => k.set_key(2, Key::Up),
-                    
-                    
-                    _ => (),
-                }
-            }
-            _ => (),
-        }
-        // TODO readd the rest of the key bindings
-        // if input.update(&event) {
-
-        //     // and load that file on startup
-        //     if input.key_pressed(VirtualKeyCode::Numpad7) {
-        //         k.set_key(1, Key::Down);
-        //     }
-
-        //     if input.key_released(VirtualKeyCode::Numpad7) {
-        //         k.set_key(1, Key::Up);
-        //     }
-
-        //     if input.key_pressed(VirtualKeyCode::Numpad3) {
-        //         k.set_key(3, Key::Down);
-        //     }
-
-        //     if input.key_released(VirtualKeyCode::Numpad3) {
-        //         k.set_key(3, Key::Up);
-        //     }
-
-        //     if input.key_pressed(VirtualKeyCode::Numpad5) {
-        //         k.set_key(5, Key::Down);
-        //     }
-
-        //     if input.key_released(VirtualKeyCode::Numpad5) {
-        //         k.set_key(5, Key::Up);
-        //     }
-
-        //     if input.key_pressed(VirtualKeyCode::Numpad1) {
-        //         k.set_key(7, Key::Down);
-        //     }
-
-        //     if input.key_released(VirtualKeyCode::Numpad1) {
-        //         k.set_key(7, Key::Up);
-        //     }
-
-        //     if input.key_pressed(VirtualKeyCode::Numpad3) {
-        //         k.set_key(9, Key::Down);
-        //     }
-
-        //     if input.key_released(VirtualKeyCode::Numpad3) {
-        //         k.set_key(9, Key::Up);
-        //     }
-
-        //     if input.key_pressed(VirtualKeyCode::Numpad0) {
-        //         k.set_key(0, Key::Down);
-        //     }
-
-        //     if input.key_released(VirtualKeyCode::Numpad0) {
-        //         k.set_key(0, Key::Up);
-        //     }
-
-        //     if input.key_pressed(VirtualKeyCode::A) {
-        //         k.set_key(10, Key::Down);
-        //     }
-
-        //     if input.key_pressed(VirtualKeyCode::A) {
-        //         k.set_key(10, Key::Up);
-        //     }
-
-        //     if input.key_pressed(VirtualKeyCode::B) {
-        //         k.set_key(11, Key::Down);
-        //     }
-
-        //     if input.key_released(VirtualKeyCode::B) {
-        //         k.set_key(11, Key::Up);
-        //     }
-
-        //     if input.key_pressed(VirtualKeyCode::C) {
-        //         k.set_key(12, Key::Down);
-        //     }
-
-        //     if input.key_released(VirtualKeyCode::C) {
-        //         k.set_key(12, Key::Up);
-        //     }
-
-        //     if input.key_pressed(VirtualKeyCode::D) {
-        //         k.set_key(13, Key::Down);
-        //     }
-
-        //     if input.key_released(VirtualKeyCode::D) {
-        //         k.set_key(13, Key::Up);
-        //     }
-
-        //     if input.key_pressed(VirtualKeyCode::E) {
-        //         k.set_key(14, Key::Down);
-        //     }
-
-        //     if input.key_released(VirtualKeyCode::E) {
-        //         k.set_key(14, Key::Up);
-        //     }
-
-        //     if input.key_pressed(VirtualKeyCode::F) {
-        //         k.set_key(15, Key::Down);
-        //     }
-
-        //     if input.key_released(VirtualKeyCode::F) {
-        //         k.set_key(15, Key::Up);
-        //     }
-        // }
-        // TODO instead of redrawing the frame every loop, can either send a signal from emulator when
-        // a drw instrctuion is run, or just check the instruction in this loop
-        window.request_redraw();
-    });
+    // let _ = event_loop.run(move |event, control_flow| {
+        
+    // });
 }
+
+// TODO Pixels needs to be initalized with new_async on web, but the event loop needs to be running to create
+// a window for pixels, but the event loop does not have any async method to create pixels in
+// I will need to drop the pixels dependancy and just implement a basic wgpu put_pixels myself
+
+/*
+//TODO
+    Currently I cannot figure out a way to implement a simple file selector from the javascript side.
+    I can't send data from JS to the running emulator, since the eventloop need to have ownership of it.
+    Options are
+    - figure out how to use mutex accross JS and rust
+    - figure out how to reload the wasm instance
+        This seems harder to figure out than it should, I think I either need to stop using wasmpack
+        and manually instanciate the wasm bundle, or use JS Blobs and objectURL.
+        I don't think web workers will work from an initial glance, since winit needs access to DOM elements that workers dont have
+    - use a file selector in rust that works on web
+        Apparently this is not easy to do in winit?
+    - add a dependancy to manually send the 'ESC' key to the window so that winit can close before I attempt to create a new one
+
+    As of right now though, I am putting this on hold
+
+ */

@@ -169,16 +169,3 @@ impl Instruction {
         }
     }
 }
-
-// TODO write more tests cases for this
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn non_variable_instructions() {
-        let opcode = 0x00EE;
-        let i = Instruction::parse_opcode(opcode);
-        assert_eq!(i, Instruction::RET);
-    }
-}

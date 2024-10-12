@@ -5,7 +5,7 @@ use std::fmt;
 
 use chrono::{Local, DateTime};
 
-// #[cfg(target_arch = "wasm32")]
+// Need wasm even when not on web for the JSValue return type
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -252,12 +252,11 @@ impl Emulator {
         if diff_as_microseconds < 1851 { return; }
         let steps = diff_as_microseconds / 1851;
 
-        for i in 0..steps {
+        for _ in 0..steps {
             self.decrement_counters();
             let first_byte = self.memory[self.pc as usize];
             let second_byte = self.memory[(self.pc + 1) as usize];
             let opcode: u16 = ((first_byte as u16) << 8) | (second_byte as u16);
-            // println!("{:#06x}, high: {:#04x}, low: {:#04x}", self.pc, first_byte, second_byte);
             let curr_instruction = Instruction::parse_opcode(opcode);
             match curr_instruction {
                 Instruction::LD_Vx_K => match keyboard.get_first_key_down() {
@@ -267,6 +266,7 @@ impl Emulator {
                 _ => (),
             }
             self.emulate(opcode, &keyboard, screen);
+
             // match all jump/call instructions and do not increment the pc.
             match curr_instruction {
                 Instruction::JP_addr => (),
@@ -519,7 +519,7 @@ impl Emulator {
         // We XOR the sprite with the screen, so if an on pixel is already set at any point in the sprite, it is set to off and VF is set.
         // From my understanding the only way a pixel is set to off is by this collision.
         // If a sprite goes off the screen, it will wrap around to the other side. I found conflicting information on the specifics of this,
-        // but my in implementation it will wrap part of a sprite.
+        // but my in implementation it will wrap a portion of a sprite.
         let second_nibble = high_byte & 0x0F;
         let third_nibble = (low_byte & 0xF0) >> 4;
         let last_nibble = low_byte & 0x0F;
@@ -562,7 +562,7 @@ impl Emulator {
     fn ld_vx_k(&mut self, high_byte: u8, keyboard: &Keyboard) {
         // This function will halt execution until a key is pressed. Then
         // store that key in Vx. Halting will occur outside of this function,
-        // and it will assume that a key has already been pressed.
+        // and this function will assume that a key has already been pressed.
         let sn = high_byte & 0x0F;
         self.registers[sn as usize] = match keyboard.get_first_key_down() {
             Some(i) => i,
@@ -594,7 +594,7 @@ impl Emulator {
 
     fn ld_f_vx(&mut self, high_byte: u8) {
         // This gets the hexidecimal digits that are stored in the
-        // begginning section of memory (first 512 bytes).
+        // beginning section of memory (first 512 bytes).
         // I think these can be stored in an arbitary location, but I'm not sure.
         // I = sprite_mem_index
         let sn = high_byte & 0x0F;

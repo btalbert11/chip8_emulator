@@ -48,7 +48,6 @@
                 return;
             }
             var data = await fetch(filePath).then(response => {return response.text()});
-            console.log(data)
             let element = document.getElementById('chip8-emulator');
             element.remove();
             element = document.createElement('div');
