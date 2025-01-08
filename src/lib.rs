@@ -147,13 +147,18 @@ impl ApplicationHandler for App {
                     })
                     .expect("Couldn't append canvas to document body.");
 
-                    self.pixels = {
-                        let surface_texture = SurfaceTexture::new(WIDTH as u32 * 8, HEIGHT as u32 * 8, &window);
-                        match Pixels::new_async(WIDTH as u32, HEIGHT as u32, surface_texture).await {
-                            Ok(p) =>  Some(p),
-                            Err(_) => panic!("failed to create Pixels object"),
+                    let p: Option<Pixels> = None;
+                    let future = async move {
+                        p = {
+                            let surface_texture = SurfaceTexture::new(WIDTH as u32 * 8, HEIGHT as u32 * 8, &window);
+                            match Pixels::new_async(WIDTH as u32, HEIGHT as u32, surface_texture).await {
+                                Ok(p) =>  Some(p),
+                                Err(_) => panic!("failed to create Pixels object"),
+                            }
                         }
-                    };    
+                    };
+                    wasm_bindgen_futures::spawn_local(future);
+                    self.pixels = p;
             }
             
             #[cfg(not(target_arch = "wasm32"))]
@@ -167,35 +172,46 @@ impl ApplicationHandler for App {
                 };
             }
         }
+        self.window.as_ref().unwrap().request_redraw();
     }
-
+    
     fn window_event(
-            &mut self,
-            event_loop: &ActiveEventLoop,
-            window_id: WindowId,
-            event: WindowEvent,
-        ) {
-            let diff = (Local::now().time() - self.now).num_microseconds().unwrap_or(0);
-            if diff > 1851 {
-                self.e.emulate_step(&self.k, &mut self.s, diff);
-                self.now = Local::now().time();
-            }
-            if let (Some(window), Some(pixels)) = (self.window.as_ref(), self.pixels.as_mut()) {
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let diff = (Local::now().time() - self.now).num_microseconds().unwrap_or(0);
+        if diff > 1851 {
+            self.e.emulate_step(&self.k, &mut self.s, diff);
+            self.now = Local::now().time();
+        }
+        
+        #[cfg(target_arch = "wasm32")]
+        console::log_1(&format!("{:?}", self.pixels.as_ref()).into());
+        if let (Some(window), Some(pixels)) = (self.window.as_ref(), self.pixels.as_mut()) {
+
                 match event {
                     // window management
                     WindowEvent::CloseRequested | WindowEvent::KeyboardInput { 
                         event: KeyEvent {state: ElementState::Pressed, physical_key: PhysicalKey::Code(KeyCode::Escape), ..},
                         ..
                     } => event_loop.exit(),
-                    WindowEvent::RedrawRequested if window_id == window.id() => {
-                        if window.inner_size().width <= 0 {
-                            return;
+                    WindowEvent::RedrawRequested => {
+                        #[cfg(target_arch = "wasm32")] {
+                            console::log_3(&"window id".into(), &format!("{:?}", window_id).into(), &format!("{:?}", window.id()).into());
+                            console::log_1(&"Redraw requested".into());
                         }
-                        draw_pixels(pixels.frame_mut(), &self.s.screen_to_render());
-                        if let Err(err) = pixels.render() {
-                            println!("PIXEL DRAW ERROR: {}", err);
-                            event_loop.exit();
-                            return;
+                        if window_id == window.id() {
+                            if window.inner_size().width <= 0 {
+                                return;
+                            }
+                            draw_pixels(pixels.frame_mut(), &self.s.screen_to_render());
+                            if let Err(err) = pixels.render() {
+                                println!("PIXEL DRAW ERROR: {}", err);
+                                event_loop.exit();
+                                return;
+                            }
                         }
                     },
                     WindowEvent::Resized(physical_size) => {
@@ -342,7 +358,8 @@ pub async fn run(mut e: Emulator) {
 
 // TODO Pixels needs to be initalized with new_async on web, but the event loop needs to be running to create
 // a window for pixels, but the event loop does not have any async method to create pixels in
-// I will need to drop the pixels dependancy and just implement a basic wgpu put_pixels myself
+// This is also true of wgpu in general. There is a hacky work around I found on the web, but I would rather
+// just put this project on hold.
 
 /*
 //TODO
@@ -358,6 +375,7 @@ pub async fn run(mut e: Emulator) {
         Apparently this is not easy to do in winit?
     - add a dependancy to manually send the 'ESC' key to the window so that winit can close before I attempt to create a new one
 
-    As of right now though, I am putting this on hold
+    This will work if I start by asking the user to upload a rom and then only initializing wasm afterwards.
+    As of right now though, I am putting this on hold.
 
  */
